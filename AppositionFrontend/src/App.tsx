@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { SubmitEvent, KeyboardEvent } from 'react'
 import { analyzeIdea } from './api'
+import Swirl from './Swirl'
 import type { Analysis, Brief, Competitor, Differentiator, Severity, Weakness } from './types'
 import './App.css'
 
@@ -47,6 +48,9 @@ function App() {
   const [brief, setBrief] = useState<Brief>(EMPTY)
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [step, setStep] = useState(0)
+
+  const landing = view === 'input' && step === 0
 
   const run = async () => {
     setView('loading')
@@ -64,20 +68,30 @@ function App() {
   const restart = () => {
     setBrief(EMPTY)
     setAnalysis(null)
+    setStep(0)
     setView('input')
   }
 
   return (
-    <>
+    <div className={`app${landing ? ' landing' : ''}`}>
+      <Swirl active={landing} />
       <header className="hero">
-        <h1 className="brand">Apposition</h1>
+        <Tiles />
+        <Logo />
         <p className="tagline">Know your competition before you build.</p>
-        <div className="gold-bar" aria-hidden />
+        <div className="hero-bar" aria-hidden />
       </header>
 
       <main className={view === 'results' ? 'wide' : undefined}>
         {view === 'input' && (
-          <BriefForm brief={brief} setBrief={setBrief} onSubmit={run} error={error} />
+          <BriefForm
+            brief={brief}
+            setBrief={setBrief}
+            step={step}
+            setStep={setStep}
+            onSubmit={run}
+            error={error}
+          />
         )}
         {view === 'loading' && <Loading />}
         {view === 'results' && analysis && (
@@ -88,7 +102,7 @@ function App() {
       <footer>
         <p>Built with Apposition</p>
       </footer>
-    </>
+    </div>
   )
 }
 
@@ -97,12 +111,13 @@ function App() {
 interface BriefFormProps {
   brief: Brief
   setBrief: (b: Brief) => void
+  step: number
+  setStep: (step: number) => void
   onSubmit: () => void
   error: string | null
 }
 
-function BriefForm({ brief, setBrief, onSubmit, error }: BriefFormProps) {
-  const [step, setStep] = useState(0)
+function BriefForm({ brief, setBrief, step, setStep, onSubmit, error }: BriefFormProps) {
   const [back, setBack] = useState(false)
   const [draft, setDraft] = useState('')
 
@@ -159,6 +174,7 @@ function BriefForm({ brief, setBrief, onSubmit, error }: BriefFormProps) {
       <div key={step} className={`panel${back ? ' back' : ''}`}>
         {step === 0 && (
           <>
+            <h2 className="landing-title">Know your competition before you build.</h2>
             <label className="field">
               <span className="field-label">I have an idea for an app that&hellip;</span>
               <textarea
@@ -247,8 +263,8 @@ function Loading() {
 
   return (
     <section className="loading" aria-live="polite">
-      <PawTrail />
-      <p className="fetch-caption">Our Retriever is fetching your competitors&hellip;</p>
+      <Orbit />
+      <p className="fetch-caption">Scanning the App Store for your competitors&hellip;</p>
       <ul>
         {STAGES.map((label, i) => (
           <li key={label} className={i < stage ? 'done' : i === stage ? 'active' : undefined}>
@@ -469,28 +485,59 @@ function CompetitorCard({ competitor: c, open, onToggle }: { competitor: Competi
 
 /* ---------------- Small visuals ---------------- */
 
-function Paw() {
+function LogoMark({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 32 32" className="paw" aria-hidden>
-      <ellipse cx="16" cy="21.5" rx="7" ry="6" />
-      <ellipse cx="7.5" cy="13" rx="2.8" ry="3.6" />
-      <ellipse cx="13" cy="8" rx="2.8" ry="3.8" />
-      <ellipse cx="19" cy="8" rx="2.8" ry="3.8" />
-      <ellipse cx="24.5" cy="13" rx="2.8" ry="3.6" />
+    <svg viewBox="0 0 100 100" className={className} aria-hidden>
+      <circle cx="50" cy="50" r="50" className="mark-disc" />
+      <g className="mark-a">
+        <circle cx="48" cy="50.8" r="30.5" fill="#fff" />
+        <rect x="64.8" y="50.8" width="13.7" height="30.5" fill="#fff" />
+        <circle cx="49.5" cy="47.3" r="15.3" className="mark-hole" />
+        <rect x="61.6" y="58" width="3.2" height="12" className="mark-hole" />
+      </g>
     </svg>
   )
 }
 
-const PAW_STEPS = 7
+const WORDMARK = [...'Apposition']
 
-function PawTrail() {
+function Logo() {
   return (
-    <div className="paw-trail" aria-hidden>
-      {Array.from({ length: PAW_STEPS }, (_, i) => (
-        <span key={i} className={i % 2 ? 'low' : 'high'} style={{ animationDelay: `${i * 0.25}s` }}>
-          <Paw />
-        </span>
+    <h1 className="logo" aria-label="Apposition">
+      <LogoMark className="logo-mark" />
+      <span className="wordmark" aria-hidden>
+        {WORDMARK.map((ch, i) => (
+          <span key={i} style={{ animationDelay: `${0.35 + i * 0.05}s` }}>
+            {ch}
+          </span>
+        ))}
+      </span>
+    </h1>
+  )
+}
+
+const TILES = [8, 19, 31, 44, 58, 69, 81, 92]
+
+function Tiles() {
+  return (
+    <div className="tiles" aria-hidden>
+      {TILES.map((left, i) => (
+        <span key={left} style={{ left: `${left}%`, animationDelay: `${(i * 1.13) % 9}s` }} />
       ))}
+    </div>
+  )
+}
+
+function Orbit() {
+  return (
+    <div className="orbit" aria-hidden>
+      {[0, 1, 2].map((i) => (
+        <div key={i} className={`orbit-ring r${i}`}>
+          <span />
+          <span />
+        </div>
+      ))}
+      <LogoMark className="orbit-mark" />
     </div>
   )
 }

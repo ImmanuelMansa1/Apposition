@@ -5,20 +5,18 @@
   --card-bg: color-mix(in srgb, var(--text-h) 2.5%, var(--bg));
 }
 
-/* ---- hero: black band, gold shimmer title ---- */
+/* ---- hero: logo reveal over drifting app tiles ---- */
 .hero {
   position: relative;
-  padding: 8px 24px 28px;
-  background: var(--umbc-black);
+  padding: 20px 24px 36px;
   overflow: hidden;
 }
 
 .hero::before {
-  /* slow gold glow drifting behind the title */
   content: '';
   position: absolute;
   inset: -60% -20%;
-  background: radial-gradient(closest-side, rgba(253, 181, 21, 0.22), transparent 70%);
+  background: radial-gradient(closest-side, var(--accent-bg), transparent 70%);
   animation: glow-drift 9s ease-in-out infinite alternate;
   pointer-events: none;
 }
@@ -28,14 +26,107 @@
   to { transform: translateX(25%); }
 }
 
-.brand {
+/* faint app-icon tiles floating up behind the logo: the App Store we scan */
+.tiles span {
+  position: absolute;
+  bottom: -40px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1.5px solid var(--accent-border);
+  opacity: 0;
+  animation: tile-float 9s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes tile-float {
+  10% { opacity: 0.5; }
+  80% { opacity: 0.25; }
+  to { opacity: 0; transform: translateY(-260px) rotate(40deg); }
+}
+
+.logo {
   position: relative;
-  background: linear-gradient(100deg, var(--umbc-gold) 0%, var(--umbc-gold) 40%, #fff3c4 50%, var(--umbc-gold) 60%, var(--umbc-gold) 100%);
-  background-size: 250% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: shimmer 4s ease-in-out infinite, rise 0.6s ease both;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28em;
+  font-family: var(--heading);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-h);
+  cursor: default;
+}
+
+.logo-mark {
+  width: 1.1em;
+  height: 1.1em;
+  flex: none;
+  overflow: visible;
+}
+
+.mark-disc,
+.mark-hole {
+  fill: var(--brand);
+}
+
+.mark-disc {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: disc-pop 0.6s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+}
+
+.mark-a {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: a-spin 0.8s 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+}
+
+.logo:hover .mark-a {
+  animation: a-twirl 0.8s ease;
+}
+
+@keyframes disc-pop {
+  from { transform: scale(0); }
+}
+
+@keyframes a-spin {
+  from { opacity: 0; transform: rotate(-220deg) scale(0.2); }
+}
+
+@keyframes a-twirl {
+  to { transform: rotate(360deg); }
+}
+
+.wordmark span {
+  display: inline-block;
+  animation: letter-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes letter-in {
+  from { opacity: 0; transform: translateY(0.45em); filter: blur(4px); }
+}
+
+.tagline {
+  position: relative;
+  color: var(--text);
+  font-size: 19px;
+  margin-top: -12px;
+  animation: rise 0.6s 0.9s ease both;
+}
+
+.hero-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--brand);
+  transform-origin: left;
+  animation: bar-in 0.9s 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes bar-in {
+  from { transform: scaleX(0); }
 }
 
 @keyframes shimmer {
@@ -43,27 +134,80 @@
   to { background-position: -150% 0; }
 }
 
-.tagline {
+/* ---- landing: full-screen swirl around the idea prompt ---- */
+.app {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.swirl {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.7s ease;
+}
+
+.swirl.on {
+  opacity: 1;
+}
+
+.app > :not(.swirl) {
   position: relative;
-  color: #d8d4c8;
-  font-size: 19px;
-  margin-top: -12px;
-  animation: rise 0.6s 0.15s ease both;
 }
 
-.gold-bar {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 5px;
-  background: var(--umbc-gold);
-  transform-origin: left;
-  animation: bar-in 0.9s 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+.logo {
+  transition: font-size 0.45s ease;
 }
 
-@keyframes bar-in {
-  from { transform: scaleX(0); }
+.landing .hero {
+  align-self: flex-start;
+  padding: 18px 24px;
+}
+
+.landing .hero::before,
+.landing .tiles,
+.landing .hero-bar,
+.landing .hero .tagline {
+  display: none;
+}
+
+.landing .logo {
+  font-size: 30px;
+  margin: 0;
+}
+
+.landing main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 600px;
+}
+
+.landing .brief {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 28px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 0 0 1px var(--border), var(--shadow);
+  animation: rise 0.6s 0.2s ease both;
+}
+
+.landing-title {
+  margin: 0;
+  font-size: clamp(24px, 6vw, 30px);
+  letter-spacing: -0.5px;
+  color: var(--text-h);
+}
+
+.landing footer {
+  display: none;
 }
 
 main {
@@ -434,40 +578,59 @@ button {
   padding: 48px 0;
 }
 
-/* Retriever paw prints walking left→right while we "fetch" */
-.paw-trail {
-  display: flex;
-  gap: 10px;
-  height: 64px;
-  align-items: center;
+/* competitor apps orbiting your idea while we search */
+.orbit {
+  position: relative;
+  width: 180px;
+  height: 180px;
 }
 
-.paw-trail span {
-  display: block;
-  width: 26px;
-  opacity: 0;
-  animation: paw-step 1.75s ease-in-out infinite;
+.orbit-ring {
+  position: absolute;
+  border: 1px dashed var(--border);
+  border-radius: 50%;
+  animation: spin 4s linear infinite;
 }
 
-.paw-trail .high { transform: translateY(-10px) rotate(90deg); }
-.paw-trail .low { transform: translateY(10px) rotate(90deg); }
+.orbit-ring.r0 { inset: 48px; }
+.orbit-ring.r1 { inset: 24px; animation-duration: 7s; animation-direction: reverse; }
+.orbit-ring.r2 { inset: 0; animation-duration: 11s; }
 
-.paw {
-  display: block;
-  width: 100%;
-  fill: var(--accent);
+.orbit-ring span {
+  position: absolute;
+  top: -7px;
+  left: calc(50% - 7px);
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--accent);
 }
 
-@keyframes paw-step {
-  0% { opacity: 0; scale: 0.6; }
-  15% { opacity: 1; scale: 1; }
-  60% { opacity: 0.6; }
-  100% { opacity: 0; }
+.orbit-ring span + span {
+  top: auto;
+  bottom: -7px;
+  opacity: 0.45;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.orbit-mark {
+  position: absolute;
+  left: calc(50% - 26px);
+  top: calc(50% - 26px);
+  width: 52px;
+  height: 52px;
+  animation: breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  50% { transform: scale(1.08); }
 }
 
 .fetch-caption {
-  font-style: italic;
-  margin-top: -16px;
+  margin-top: -12px;
 }
 
 .loading ul {
@@ -878,7 +1041,7 @@ button {
 }
 
 .beat-list li:nth-child(-n + 3) .rank {
-  background: linear-gradient(110deg, var(--umbc-gold) 40%, #fff3c4 50%, var(--umbc-gold) 60%) var(--umbc-gold);
+  background: linear-gradient(110deg, var(--accent) 40%, color-mix(in srgb, var(--accent) 55%, #fff) 50%, var(--accent) 60%) var(--accent);
   background-size: 300% 100%;
   animation: shimmer 3s ease-in-out infinite;
   color: var(--on-accent);
@@ -933,6 +1096,14 @@ footer {
 }
 
 @media (max-width: 640px) {
+  .landing main {
+    padding: 12px;
+  }
+
+  .landing .brief {
+    padding: 20px;
+  }
+
   .overview,
   .pros-cons {
     grid-template-columns: 1fr;
@@ -960,7 +1131,7 @@ footer {
     transition-duration: 0.01ms !important;
   }
 
-  .paw-trail span {
-    opacity: 1;
+  .tiles {
+    display: none;
   }
 }
