@@ -5,11 +5,12 @@
   --card-bg: color-mix(in srgb, var(--text-h) 2.5%, var(--bg));
 }
 
-/* ---- interactive dot grid behind the whole page (DotGrid.tsx) ---- */
-.dot-grid {
+/* ---- starfield behind the whole page (Starfield.tsx) ---- */
+.starfield {
   position: fixed;
   inset: 0;
   z-index: -1;
+  display: block;
   width: 100vw;
   height: 100vh;
   pointer-events: none;
@@ -281,6 +282,7 @@ html {
 
 .landing .examples .chip {
   display: block;
+  background: var(--surface); /* keep text clear of the starfield behind */
   padding: 10px 20px;
   border-radius: 20px;
   text-align: left;

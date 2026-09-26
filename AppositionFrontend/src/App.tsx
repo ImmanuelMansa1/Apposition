@@ -3,10 +3,10 @@ import type { SubmitEvent, KeyboardEvent } from 'react'
 import { analyzeIdea } from './api'
 import LiquidGlassButton from './LiquidGlassButton'
 import type { LiquidGlassButtonProps } from './LiquidGlassButton'
-import DotGrid from './DotGrid'
 import Preloader from './Preloader'
 import Typewriter from './Typewriter'
 import Showcase from './Showcase'
+import Starfield from './Starfield'
 import { scrollToTop, startSmoothScroll } from './SmoothScroll'
 import TopApps from './TopApps'
 import type { Analysis, Brief, Competitor, Differentiator, Severity, Weakness } from './types'
@@ -103,7 +103,10 @@ function App() {
   return (
     <ThemeContext.Provider value={theme}>
       <div className={`app${landing ? ' landing' : ''}${preloading ? ' preloading' : ''}`}>
-        <DotGrid />
+        <Starfield
+          background={theme === 'dark' ? '#000000' : '#ffffff'}
+          starColor={theme === 'dark' ? '#ffffff' : '#1d3374'}
+        />
         <button
           type="button"
           className="theme-toggle"
