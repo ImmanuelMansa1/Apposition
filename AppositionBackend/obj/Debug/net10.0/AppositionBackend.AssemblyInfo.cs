@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("AppositionBackend")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+2b5d99e822035e9f4d85de8c171d6cb14b9f016a")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+19c85ed8027f57d8b4c8989936ce6bea1a225584")]
 [assembly: System.Reflection.AssemblyProductAttribute("AppositionBackend")]
 [assembly: System.Reflection.AssemblyTitleAttribute("AppositionBackend")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
