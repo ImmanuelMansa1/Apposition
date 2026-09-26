@@ -1,7 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { SubmitEvent, KeyboardEvent } from 'react'
 import { analyzeIdea } from './api'
-import Swirl from './Swirl'
+import LiquidGlassButton from './LiquidGlassButton'
+import type { LiquidGlassButtonProps } from './LiquidGlassButton'
+import DotGrid from './DotGrid'
+import Preloader from './Preloader'
+import Typewriter from './Typewriter'
+import Showcase from './Showcase'
+import { scrollToTop, startSmoothScroll } from './SmoothScroll'
+import TopApps from './TopApps'
 import type { Analysis, Brief, Competitor, Differentiator, Severity, Weakness } from './types'
 import './App.css'
 
@@ -11,6 +18,12 @@ type SortKey = 'similarity' | 'rating' | 'price'
 const EMPTY: Brief = { idea: '', features: [], audience: '' }
 
 const STEPS = ['App idea', 'Features', 'Audience']
+
+const HEADLINES = [
+  'Test and build faster with Apposition.',
+  'Know your competition before you build.',
+  'Find the gap your rivals missed.',
+]
 
 const STAGES = [
   'Reading your idea',
@@ -43,12 +56,37 @@ const SEVERITY_WEIGHT: Record<Severity, number> = { high: 3, medium: 2, low: 1 }
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+type Theme = 'light' | 'dark'
+
+// index.html sets data-theme before first paint (saved choice, else the system setting).
+const initialTheme = (): Theme => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light')
+
+const ThemeContext = createContext<Theme>('light')
+
 function App() {
   const [view, setView] = useState<View>('input')
   const [brief, setBrief] = useState<Brief>(EMPTY)
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [step, setStep] = useState(0)
+  const [preloading, setPreloading] = useState(true)
+  const [theme, setTheme] = useState<Theme>(initialTheme)
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+  }, [theme])
+
+  useEffect(startSmoothScroll, [])
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark'
+    setTheme(next)
+    try {
+      localStorage.setItem('theme', next)
+    } catch {
+      // storage blocked: the toggle still works for this visit
+    }
+  }
 
   const landing = view === 'input' && step === 0
 
@@ -65,6 +103,11 @@ function App() {
     }
   }
 
+  const tryIt = () => {
+    scrollToTop()
+    document.querySelector<HTMLTextAreaElement>('.brief textarea')?.focus({ preventScroll: true })
+  }
+
   const restart = () => {
     setBrief(EMPTY)
     setAnalysis(null)
@@ -73,36 +116,58 @@ function App() {
   }
 
   return (
-    <div className={`app${landing ? ' landing' : ''}`}>
-      <Swirl active={landing} />
-      <header className="hero">
-        <Tiles />
-        <Logo />
-        <p className="tagline">Know your competition before you build.</p>
-        <div className="hero-bar" aria-hidden />
-      </header>
-
-      <main className={view === 'results' ? 'wide' : undefined}>
-        {view === 'input' && (
-          <BriefForm
-            brief={brief}
-            setBrief={setBrief}
-            step={step}
-            setStep={setStep}
-            onSubmit={run}
-            error={error}
-          />
+    <ThemeContext.Provider value={theme}>
+      <div className={`app${landing ? ' landing' : ''}${preloading ? ' preloading' : ''}`}>
+        <DotGrid />
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={toggleTheme}
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+        >
+          {theme === 'dark' ? (
+            <svg viewBox="0 0 24 24" aria-hidden>
+              <circle cx="12" cy="12" r="4" />
+              <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" aria-hidden>
+              <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+            </svg>
+          )}
+        </button>
+        {preloading && (
+          <Preloader onDone={() => setPreloading(false)}>
+            <LogoMark className="preloader-mark" />
+          </Preloader>
         )}
-        {view === 'loading' && <Loading />}
-        {view === 'results' && analysis && (
-          <Results brief={brief} analysis={analysis} onRestart={restart} />
-        )}
-      </main>
+        <header className="hero">
+          <Tiles />
+          <Logo />
+          <p className="tagline">Know your competition before you build.</p>
+          <div className="hero-bar" aria-hidden />
+        </header>
 
-      <footer>
-        <p>Built with Apposition</p>
-      </footer>
-    </div>
+        <main className={view === 'results' ? 'wide' : undefined}>
+          {view === 'input' && (
+            <BriefForm brief={brief} setBrief={setBrief} step={step} setStep={setStep} onSubmit={run} error={error} introDone={!preloading} />
+          )}
+          {view === 'input' && <TopApps />}
+          {landing && (
+            <a className="scroll-hint" href="#how">
+              How it works <span aria-hidden>↓</span>
+            </a>
+          )}
+          {view === 'loading' && <Loading />}
+          {view === 'results' && analysis && <Results brief={brief} analysis={analysis} onRestart={restart} />}
+        </main>
+
+        {landing && <Showcase onTry={tryIt} />}
+
+        <GlassFooter showHow={landing} />
+      </div>
+    </ThemeContext.Provider>
   )
 }
 
@@ -115,9 +180,10 @@ interface BriefFormProps {
   setStep: (step: number) => void
   onSubmit: () => void
   error: string | null
+  introDone: boolean
 }
 
-function BriefForm({ brief, setBrief, step, setStep, onSubmit, error }: BriefFormProps) {
+function BriefForm({ brief, setBrief, step, setStep, onSubmit, error, introDone }: BriefFormProps) {
   const [back, setBack] = useState(false)
   const [draft, setDraft] = useState('')
 
@@ -174,7 +240,7 @@ function BriefForm({ brief, setBrief, step, setStep, onSubmit, error }: BriefFor
       <div key={step} className={`panel${back ? ' back' : ''}`}>
         {step === 0 && (
           <>
-            <h2 className="landing-title">Know your competition before you build.</h2>
+            <Typewriter className="landing-title" phrases={HEADLINES} start={introDone} />
             <label className="field">
               <span className="field-label">I have an idea for an app that&hellip;</span>
               <textarea
@@ -238,14 +304,13 @@ function BriefForm({ brief, setBrief, step, setStep, onSubmit, error }: BriefFor
       {error && <p className="error">{error}</p>}
 
       <div className="actions">
-        {step > 0 && (
-          <button type="button" className="secondary" onClick={() => go(step - 1)}>
-            Back
-          </button>
-        )}
-        <button type="submit" className="primary" disabled={!canNext}>
-          {last ? 'Find my competitors' : 'Next'}
-        </button>
+        {step > 0 && <GlassButton variant="secondary" label="Back" onTap={() => go(step - 1)} />}
+        <GlassButton
+          type="submit"
+          label={last ? 'Find my competitors' : 'Next'}
+          icon={last ? 'arrow' : 'chevron'}
+          disabled={!canNext}
+        />
       </div>
     </form>
   )
@@ -412,16 +477,12 @@ function Results({ brief, analysis, onRestart }: ResultsProps) {
       </section>
 
       <div className="actions sticky">
-        <button type="button" className="secondary" onClick={onRestart}>
-          New idea
-        </button>
-        <button
-          type="button"
-          className="primary"
-          onClick={() => exportDoc(analysis, weaknesses, analysis.differentiators.filter((_, i) => planned.has(i)))}
-        >
-          Download report
-        </button>
+        <GlassButton variant="secondary" label="New idea" onTap={onRestart} />
+        <GlassButton
+          label="Download report"
+          icon="arrow"
+          onTap={() => exportDoc(analysis, weaknesses, analysis.differentiators.filter((_, i) => planned.has(i)))}
+        />
       </div>
     </div>
   )
@@ -480,6 +541,70 @@ function CompetitorCard({ competitor: c, open, onToggle }: { competitor: Competi
         </div>
       )}
     </li>
+  )
+}
+
+/* ---------------- Liquid glass ---------------- */
+
+const GLASS_FONT = { fontFamily: 'var(--heading)', fontSize: 16, fontWeight: 600, letterSpacing: '-0.01em' }
+
+function GlassButton({
+  variant = 'primary',
+  ...props
+}: LiquidGlassButtonProps & { variant?: 'primary' | 'secondary' }) {
+  const primary = variant === 'primary'
+  const dark = useContext(ThemeContext) === 'dark'
+  return (
+    <LiquidGlassButton
+      material={primary ? 'tinted' : 'clear'}
+      surface={dark ? 'dark' : 'light'}
+      tint={primary ? 'var(--accent)' : '#fff'}
+      textColor={primary ? 'var(--accent-ink)' : 'var(--text-h)'}
+      icon={primary ? 'chevron' : 'none'}
+      padding="13px 24px"
+      font={GLASS_FONT}
+      focusColor="var(--accent)"
+      {...props}
+    />
+  )
+}
+
+function GlassFooter({ showHow }: { showHow: boolean }) {
+  const toTop = scrollToTop
+  return (
+    <footer className="glass-footer">
+      <div className="glass-footer-content">
+        <div className="glass-footer-top">
+          <div className="glass-footer-brand">
+            <span className="glass-footer-logo">
+              <LogoMark className="glass-footer-mark" />
+              Apposition
+            </span>
+            <p>Know your competition before you build. App Store research, done in seconds.</p>
+          </div>
+          <nav className="glass-footer-links" aria-label="Footer">
+            <div>
+              <h3>Product</h3>
+              <button type="button" onClick={toTop}>
+                Analyze an idea
+              </button>
+              {showHow && <a href="#how">How it works</a>}
+            </div>
+          </nav>
+        </div>
+        <div className="glass-footer-divider" />
+        <div className="glass-footer-bottom">
+          <span>© {new Date().getFullYear()} Apposition</span>
+          <GlassButton
+            variant="secondary"
+            label="Back to top"
+            padding="8px 16px"
+            font={{ ...GLASS_FONT, fontSize: 13 }}
+            onTap={toTop}
+          />
+        </div>
+      </div>
+    </footer>
   )
 }
 

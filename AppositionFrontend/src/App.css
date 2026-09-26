@@ -5,25 +5,84 @@
   --card-bg: color-mix(in srgb, var(--text-h) 2.5%, var(--bg));
 }
 
+/* ---- interactive dot grid behind the whole page (DotGrid.tsx) ---- */
+.dot-grid {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+}
+
+/* ---- light/dark toggle, pinned top-right ---- */
+.theme-toggle {
+  position: fixed;
+  top: 14px;
+  right: 16px;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--glass);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: var(--text-h);
+  box-shadow: 0 4px 14px -6px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.theme-toggle:hover {
+  border-color: var(--accent-border);
+  transform: rotate(-15deg);
+}
+
+.theme-toggle svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---- logo preloader (Preloader.tsx): white screen over everything on first load ---- */
+.preloader {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+
+.preloader-logo {
+  will-change: transform, opacity;
+}
+
+.preloader-mark {
+  display: block;
+  width: 80px;
+  height: 80px;
+}
+
+/* hold the hero's own logo intro until the preloader has lifted, so it plays in view */
+.preloading .hero,
+.preloading .hero * {
+  animation-play-state: paused !important;
+}
+
 /* ---- hero: logo reveal over drifting app tiles ---- */
 .hero {
   position: relative;
   padding: 20px 24px 36px;
   overflow: hidden;
-}
-
-.hero::before {
-  content: '';
-  position: absolute;
-  inset: -60% -20%;
-  background: radial-gradient(closest-side, var(--accent-bg), transparent 70%);
-  animation: glow-drift 9s ease-in-out infinite alternate;
-  pointer-events: none;
-}
-
-@keyframes glow-drift {
-  from { transform: translateX(-25%); }
-  to { transform: translateX(25%); }
 }
 
 /* faint app-icon tiles floating up behind the logo: the App Store we scan */
@@ -134,29 +193,11 @@
   to { background-position: -150% 0; }
 }
 
-/* ---- landing: full-screen swirl around the idea prompt ---- */
+/* ---- landing: idea prompt centred on a white page ---- */
 .app {
   flex: 1;
   display: flex;
   flex-direction: column;
-}
-
-.swirl {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.7s ease;
-}
-
-.swirl.on {
-  opacity: 1;
-}
-
-.app > :not(.swirl) {
-  position: relative;
 }
 
 .logo {
@@ -164,11 +205,10 @@
 }
 
 .landing .hero {
-  align-self: flex-start;
-  padding: 18px 24px;
+  align-self: center;
+  padding: 14px 24px;
 }
 
-.landing .hero::before,
 .landing .tiles,
 .landing .hero-bar,
 .landing .hero .tagline {
@@ -182,9 +222,36 @@
 
 .landing main {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 28px;
   max-width: 600px;
+  min-height: calc(100svh - 72px);
+}
+
+.scroll-hint {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--accent-ink);
+  text-decoration: none;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.scroll-hint span {
+  display: inline-block;
+  animation: nudge 1.6s ease-in-out infinite;
+}
+
+@keyframes nudge {
+  50% { transform: translateY(4px); }
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 .landing .brief {
@@ -192,11 +259,51 @@
   box-sizing: border-box;
   padding: 28px;
   border-radius: 20px;
-  background: color-mix(in srgb, var(--bg) 90%, transparent);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: var(--surface);
   box-shadow: 0 0 0 1px var(--border), var(--shadow);
   animation: rise 0.6s 0.2s ease both;
+}
+
+/* ---- typewriter headline (Typewriter.tsx) ---- */
+.typewriter-stack {
+  display: grid;
+}
+
+/* the invisible longest phrase holds the final size, so typing never shifts the layout */
+.typewriter-ghost,
+.typewriter-live {
+  grid-area: 1 / 1;
+}
+
+.typewriter-ghost {
+  visibility: hidden;
+}
+
+.typewriter-caret {
+  display: inline-block;
+  width: 3px;
+  height: 1em;
+  margin-left: 3px;
+  border-radius: 2px;
+  vertical-align: -0.12em;
+  background: var(--accent);
+}
+
+.typewriter-caret.blink {
+  animation: caret-blink 1s steps(1) infinite;
+}
+
+@keyframes caret-blink {
+  50% { opacity: 0; }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .landing-title {
@@ -204,10 +311,6 @@
   font-size: clamp(24px, 6vw, 30px);
   letter-spacing: -0.5px;
   color: var(--text-h);
-}
-
-.landing footer {
-  display: none;
 }
 
 main {
@@ -1088,11 +1191,156 @@ button {
   color: var(--text-h);
 }
 
-/* ---- footer ---- */
-footer {
-  padding: 24px;
-  color: var(--text);
-  font-size: 14px;
+/* ---- liquid glass footer (after the Framer "Liquid Glass Footer") ---- */
+.glass-footer {
+  margin: 48px 24px 24px;
+  padding: 3px;
+  border-radius: 40px;
+  text-align: left;
+  /* palette as variables so the dark theme can swap it */
+  --gf-rim: linear-gradient(180deg, #fff 0%, #c9c9c9 9%, #a1a1a1 32%, #757575 73%, #fff 100%);
+  --gf-face: linear-gradient(150deg, #d0d0d0 0%, #e8e8e8 50%, #c8c8c8 100%);
+  --gf-strong: #0a0a0c;
+  --gf-text: rgba(20, 20, 25, 0.55);
+  --gf-muted: rgba(20, 20, 25, 0.4);
+  --gf-hover: rgba(255, 255, 255, 0.35);
+  --gf-hover-edge: rgba(255, 255, 255, 0.7);
+  --gf-divider: rgba(10, 10, 12, 0.1);
+  background: var(--gf-rim);
+  box-shadow:
+    0.29px 4.36px 2.18px rgba(0, 0, 0, 0.01),
+    0.78px 11.7px 5.86px rgba(0, 0, 0, 0.02),
+    2.2px 32.97px 16.52px rgba(0, 0, 0, 0.03),
+    4px 60px 30.07px rgba(0, 0, 0, 0.06);
+}
+
+.glass-footer-content {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 40px 44px 30px;
+  border-radius: 37px;
+  background: var(--gf-face);
+  box-shadow:
+    inset 0 1px 1.5px rgba(0, 0, 0, 0.07),
+    inset 0 -1px 1.5px rgba(0, 0, 0, 0.07);
+  font-size: 13px;
+  color: var(--gf-text);
+}
+
+.glass-footer-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 36px;
+}
+
+.glass-footer-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 320px;
+}
+
+.glass-footer-brand p {
+  line-height: 1.5;
+}
+
+.glass-footer-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--heading);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--gf-strong);
+}
+
+.glass-footer-mark {
+  width: 26px;
+  height: 26px;
+}
+
+.glass-footer-links {
+  display: flex;
+  gap: 48px;
+}
+
+.glass-footer-links > div {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.glass-footer-links h3 {
+  font-family: var(--sans);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--gf-muted);
+  padding: 6px 12px;
+  margin: 0;
+}
+
+.glass-footer-links a,
+.glass-footer-links button {
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: none;
+  font-size: 13px;
+  color: var(--gf-text);
+  text-decoration: none;
+  transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.glass-footer-links a:hover,
+.glass-footer-links button:hover {
+  color: var(--gf-strong);
+  background: var(--gf-hover);
+  border-color: var(--gf-hover);
+  box-shadow:
+    inset 0 1px 1px var(--gf-hover-edge),
+    inset 0 -1px 1.5px rgba(0, 0, 0, 0.06);
+}
+
+.glass-footer-divider {
+  height: 1px;
+  background: var(--gf-divider);
+}
+
+.glass-footer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+[data-theme='dark'] .glass-footer {
+  --gf-rim: linear-gradient(180deg, #5c5c5c 0%, #2b2b2b 12%, #1a1a1a 40%, #0f0f0f 75%, #4a4a4a 100%);
+  --gf-face: linear-gradient(150deg, #141414 0%, #1c1c1c 50%, #121212 100%);
+  --gf-strong: #eef1f8;
+  --gf-text: rgba(230, 235, 245, 0.6);
+  --gf-muted: rgba(230, 235, 245, 0.4);
+  --gf-hover: rgba(255, 255, 255, 0.08);
+  --gf-hover-edge: rgba(255, 255, 255, 0.15);
+  --gf-divider: rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 640px) {
+  .glass-footer {
+    margin: 32px 12px 12px;
+    border-radius: 32px;
+  }
+
+  .glass-footer-content {
+    padding: 28px 20px 24px;
+    border-radius: 29px;
+  }
+
+  .glass-footer-top {
+    flex-direction: column;
+    gap: 28px;
+  }
 }
 
 @media (max-width: 640px) {
