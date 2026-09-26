@@ -17,8 +17,6 @@ type SortKey = 'similarity' | 'rating' | 'price'
 
 const EMPTY: Brief = { idea: '', features: [], audience: '' }
 
-const STEPS = ['App idea', 'Features', 'Audience']
-
 const HEADLINES = [
   'Test and build faster with Apposition.',
   'Know your competition before you build.',
@@ -34,22 +32,11 @@ const STAGES = [
 ]
 const STAGE_MS = 800
 
-const EXAMPLES: Brief[] = [
-  {
-    idea: 'lets neighbours swap houseplants and cuttings',
-    features: ['Plant listings', 'In-app chat', 'Map of nearby swaps'],
-    audience: 'urban gardeners aged 25-45',
-  },
-  {
-    idea: 'splits grocery bills between roommates automatically',
-    features: ['Receipt scanning', 'Shared lists', 'Payment reminders'],
-    audience: 'college students in shared housing',
-  },
-  {
-    idea: 'matches beginner runners with buddies at the same pace',
-    features: ['Pace matching', 'Route sharing', 'Group runs'],
-    audience: 'new runners aged 20-35',
-  },
+// One-line prompts; each names the idea, a few features and who it's for.
+const EXAMPLES = [
+  'lets neighbours swap houseplants and cuttings, with plant listings, in-app chat and a map of nearby swaps, for urban gardeners',
+  'splits grocery bills between roommates automatically, with receipt scanning and payment reminders, for college students',
+  'matches beginner runners with buddies at the same pace, with route sharing and group runs',
 ]
 
 const SEVERITY_WEIGHT: Record<Severity, number> = { high: 3, medium: 2, low: 1 }
@@ -68,7 +55,6 @@ function App() {
   const [brief, setBrief] = useState<Brief>(EMPTY)
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [step, setStep] = useState(0)
   const [preloading, setPreloading] = useState(true)
   const [theme, setTheme] = useState<Theme>(initialTheme)
 
@@ -88,7 +74,7 @@ function App() {
     }
   }
 
-  const landing = view === 'input' && step === 0
+  const landing = view === 'input'
 
   const run = async () => {
     setView('loading')
@@ -111,7 +97,6 @@ function App() {
   const restart = () => {
     setBrief(EMPTY)
     setAnalysis(null)
-    setStep(0)
     setView('input')
   }
 
@@ -151,7 +136,7 @@ function App() {
 
         <main className={view === 'results' ? 'wide' : undefined}>
           {view === 'input' && (
-            <BriefForm brief={brief} setBrief={setBrief} step={step} setStep={setStep} onSubmit={run} error={error} introDone={!preloading} />
+            <BriefForm brief={brief} setBrief={setBrief} onSubmit={run} error={error} introDone={!preloading} />
           )}
           {view === 'input' && <TopApps />}
           {landing && (
@@ -171,146 +156,75 @@ function App() {
   )
 }
 
-/* ---------------- Step 1–3 form ---------------- */
+/* ---------------- Prompt (ChatGPT-style composer) ---------------- */
 
 interface BriefFormProps {
   brief: Brief
   setBrief: (b: Brief) => void
-  step: number
-  setStep: (step: number) => void
   onSubmit: () => void
   error: string | null
   introDone: boolean
 }
 
-function BriefForm({ brief, setBrief, step, setStep, onSubmit, error, introDone }: BriefFormProps) {
-  const [back, setBack] = useState(false)
-  const [draft, setDraft] = useState('')
+const MAX_PROMPT_PX = 220
 
-  const canNext = [brief.idea.trim(), true, brief.audience.trim()][step]
-  const last = step === STEPS.length - 1
+function BriefForm({ brief, setBrief, onSubmit, error, introDone }: BriefFormProps) {
+  const ready = brief.idea.trim().length > 0
 
-  const go = (to: number) => {
-    setBack(to < step)
-    setStep(to)
+  // Grow with the text like a chat composer, up to a cap, then scroll.
+  const autosize = (el: HTMLTextAreaElement | null) => {
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, MAX_PROMPT_PX)}px`
   }
 
   const handleSubmit = (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (!canNext) return
-    if (last) onSubmit()
-    else go(step + 1)
+    if (ready) onSubmit()
   }
 
-  const addFeature = () => {
-    const f = draft.trim().replace(/,$/, '')
-    if (f && !brief.features.includes(f)) setBrief({ ...brief, features: [...brief.features, f] })
-    setDraft('')
-  }
-
-  const removeFeature = (f: string) =>
-    setBrief({ ...brief, features: brief.features.filter((x) => x !== f) })
-
-  const onChipKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' || e.key === ',') {
-      if (!draft.trim()) return
+  // Enter sends, Shift+Enter adds a new line.
+  const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
-      addFeature()
-    } else if (e.key === 'Backspace' && !draft && brief.features.length) {
-      removeFeature(brief.features[brief.features.length - 1])
+      if (ready) onSubmit()
     }
   }
 
   return (
     <form className="brief" onSubmit={handleSubmit}>
-      <ol className="stepper">
-        {STEPS.map((label, i) => (
-          <li key={label} className={i === step ? 'current' : i < step ? 'done' : undefined}>
-            <button type="button" onClick={() => i < step && go(i)} disabled={i > step}>
-              <span className="step-num">{i < step ? '✓' : i + 1}</span>
-              <span className="step-label">{label}</span>
-            </button>
-          </li>
-        ))}
-      </ol>
-      <div className="progress" aria-hidden>
-        <div style={{ width: `${((step + 1) / STEPS.length) * 100}%` }} />
+      <Typewriter className="landing-title" phrases={HEADLINES} start={introDone} />
+
+      <div className="composer">
+        <textarea
+          ref={autosize}
+          autoFocus
+          rows={1}
+          value={brief.idea}
+          onChange={(e) => {
+            setBrief({ ...brief, idea: e.target.value })
+            autosize(e.target)
+          }}
+          onKeyDown={onKey}
+          placeholder="I have an idea for an app that…"
+          aria-label="Describe your app idea"
+        />
+        <button type="submit" className="composer-send" disabled={!ready} aria-label="Find my competitors">
+          <svg viewBox="0 0 24 24" aria-hidden>
+            <path d="M12 19V5M5 12l7-7 7 7" />
+          </svg>
+        </button>
       </div>
-
-      <div key={step} className={`panel${back ? ' back' : ''}`}>
-        {step === 0 && (
-          <>
-            <Typewriter className="landing-title" phrases={HEADLINES} start={introDone} />
-            <label className="field">
-              <span className="field-label">I have an idea for an app that&hellip;</span>
-              <textarea
-                autoFocus
-                value={brief.idea}
-                onChange={(e) => setBrief({ ...brief, idea: e.target.value })}
-                placeholder="lets neighbours swap houseplants and cuttings"
-                rows={3}
-              />
-            </label>
-            <div className="examples">
-              <span>Try an example:</span>
-              {EXAMPLES.map((ex) => (
-                <button type="button" key={ex.idea} className="chip ghost" onClick={() => setBrief(ex)}>
-                  {ex.idea.split(' ').slice(0, 4).join(' ')}&hellip;
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-
-        {step === 1 && (
-          <label className="field">
-            <span className="field-label">What are its key features?</span>
-            <span className="hint">Press Enter after each one. Optional, but sharper results.</span>
-            <div className="chip-input">
-              {brief.features.map((f) => (
-                <span key={f} className="chip">
-                  {f}
-                  <button type="button" aria-label={`Remove ${f}`} onClick={() => removeFeature(f)}>
-                    ×
-                  </button>
-                </span>
-              ))}
-              <input
-                autoFocus
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={onChipKey}
-                onBlur={addFeature}
-                placeholder={brief.features.length ? 'Add another…' : 'e.g. in-app chat'}
-              />
-            </div>
-          </label>
-        )}
-
-        {step === 2 && (
-          <label className="field">
-            <span className="field-label">Who is it for?</span>
-            <textarea
-              autoFocus
-              value={brief.audience}
-              onChange={(e) => setBrief({ ...brief, audience: e.target.value })}
-              placeholder="urban gardeners aged 25-45"
-              rows={2}
-            />
-          </label>
-        )}
-      </div>
+      <p className="composer-hint">Mention key features and who it's for to sharpen the results.</p>
 
       {error && <p className="error">{error}</p>}
 
-      <div className="actions">
-        {step > 0 && <GlassButton variant="secondary" label="Back" onTap={() => go(step - 1)} />}
-        <GlassButton
-          type="submit"
-          label={last ? 'Find my competitors' : 'Next'}
-          icon={last ? 'arrow' : 'chevron'}
-          disabled={!canNext}
-        />
+      <div className="examples">
+        {EXAMPLES.map((ex) => (
+          <button type="button" key={ex} className="chip ghost" onClick={() => setBrief({ ...brief, idea: ex })}>
+            {ex}
+          </button>
+        ))}
       </div>
     </form>
   )

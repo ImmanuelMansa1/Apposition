@@ -7,6 +7,7 @@
 }
 
 .top-apps-caption {
+  margin-bottom: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -38,7 +39,6 @@
 /* ---- sliding strip: three copies of the list scroll left, pause on hover ---- */
 /* clip only sideways so the hover dropdowns can hang below the strip */
 .top-apps-track {
-  margin-bottom: 4px;
   overflow-x: clip;
   overflow-y: visible;
 }
@@ -135,6 +135,20 @@
     opacity 0.2s ease,
     transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1),
     visibility 0s 0.3s;
+}
+
+/* set by checkDropFits in TopApps.tsx when there's no room below: open upward instead */
+.top-app-item[data-drop-dir='up'] .top-app-drop {
+  top: auto;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%) translateY(8px) scaleY(0.92); /* rises up into place */
+  transform-origin: bottom center;
+}
+
+.top-app-item[data-drop-dir='up'] .top-app-drop::before {
+  top: auto;
+  bottom: -6px;
+  transform: rotate(225deg);
 }
 
 /* set by checkDropFits in TopApps.tsx when the dropdown would be cut off at a window edge */

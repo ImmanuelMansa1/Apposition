@@ -228,6 +228,14 @@
   gap: 28px;
   max-width: 600px;
   min-height: calc(100svh - 72px);
+  padding-bottom: 12px;
+}
+
+/* the two auto margins share the spare height: the prompt floats in the middle of the first
+   screen and the top-10 strip (plus "How it works") drops to its bottom edge */
+.landing .brief,
+.landing .top-apps {
+  margin-top: auto;
 }
 
 .scroll-hint {
@@ -256,12 +264,29 @@ html {
 
 .landing .brief {
   width: 100%;
-  box-sizing: border-box;
-  padding: 28px;
-  border-radius: 20px;
-  background: var(--surface);
-  box-shadow: 0 0 0 1px var(--border), var(--shadow);
   animation: rise 0.6s 0.2s ease both;
+}
+
+.landing .landing-title {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+/* suggestions stack at the composer's full width; long ones truncate with an ellipsis */
+.landing .examples {
+  flex-direction: column;
+  flex-wrap: nowrap; /* wrapping would size each row to its text instead of the composer */
+  align-items: stretch;
+}
+
+.landing .examples .chip {
+  display: block;
+  padding: 10px 20px;
+  border-radius: 20px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ---- typewriter headline (Typewriter.tsx) ---- */
@@ -426,184 +451,86 @@ button {
   background: linear-gradient(transparent, var(--bg) 35%);
 }
 
-/* ---- stepper ---- */
+/* ---- prompt: ChatGPT-style composer ---- */
 .brief {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
-.stepper {
+.composer {
+  position: relative;
   display: flex;
+  align-items: flex-end;
   gap: 8px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
+  padding: 10px 10px 10px 20px;
+  border-radius: 28px;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--border), var(--shadow);
+  transition: box-shadow 0.2s ease;
 }
 
-.stepper li {
+.composer:focus-within {
+  box-shadow: 0 0 0 1px var(--accent-border), 0 0 0 4px var(--accent-bg), var(--shadow);
+}
+
+.composer textarea {
   flex: 1;
-}
-
-.stepper button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 0;
+  box-sizing: border-box; /* autosize sets height from scrollHeight, which includes padding */
+  min-height: 28px;
+  padding: 8px 0;
+  font: inherit;
+  line-height: 1.5;
+  color: var(--text-h);
   background: none;
   border: none;
+  outline: none;
+  resize: none;
+}
+
+.composer textarea::placeholder {
   color: var(--text);
-  text-align: left;
+  opacity: 0.7;
 }
 
-.stepper button:disabled {
-  cursor: default;
-}
-
-.step-num {
+.composer-send {
   flex: none;
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  font-size: 14px;
-  font-weight: 600;
-  transition: all 0.2s ease;
-}
-
-.stepper .current .step-num {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
-}
-
-.stepper .done .step-num {
-  background: var(--accent-bg);
-  border-color: var(--accent-border);
-  color: var(--accent-ink);
-}
-
-.stepper .current .step-label {
-  color: var(--text-h);
-  font-weight: 500;
-}
-
-.step-label {
-  font-size: 15px;
-}
-
-.progress {
-  height: 4px;
-  border-radius: 2px;
-  background: var(--border);
-  overflow: hidden;
-}
-
-.progress div {
-  height: 100%;
-  background: var(--accent);
-  transition: width 0.35s ease;
-}
-
-.panel {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-height: 170px;
-  animation: slide-in 0.3s ease both;
-}
-
-.panel.back {
-  animation-name: slide-in-back;
-}
-
-@keyframes slide-in {
-  from {
-    opacity: 0;
-    transform: translateX(24px);
-  }
-}
-
-@keyframes slide-in-back {
-  from {
-    opacity: 0;
-    transform: translateX(-24px);
-  }
-}
-
-/* ---- fields ---- */
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.field-label {
-  font-family: var(--heading);
-  font-size: 22px;
-  font-weight: 500;
-  color: var(--text-h);
-  letter-spacing: -0.2px;
-}
-
-.hint {
-  font-size: 14px;
-  margin-top: -4px;
-}
-
-.field textarea,
-.chip-input {
-  font: inherit;
-  color: var(--text-h);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px 14px;
-  outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.field textarea {
-  resize: vertical;
-}
-
-.field textarea::placeholder,
-.chip-input input::placeholder {
-  color: var(--text);
-  opacity: 0.55;
-}
-
-.field textarea:hover,
-.chip-input:hover {
-  border-color: var(--accent-border);
-}
-
-.field textarea:focus,
-.chip-input:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-bg);
-}
-
-.chip-input {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  cursor: text;
-}
-
-.chip-input input {
-  flex: 1;
-  min-width: 140px;
-  font: inherit;
-  color: var(--text-h);
-  background: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
   border: none;
-  outline: none;
-  padding: 2px 0;
+  border-radius: 50%;
+  color: var(--on-accent);
+  background: var(--accent);
+  transition: opacity 0.2s ease, transform 0.15s ease;
+}
+
+.composer-send:hover:not(:disabled) {
+  transform: scale(1.06);
+}
+
+.composer-send:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.composer-send svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.composer-hint {
+  margin-top: -6px;
+  padding: 0 20px;
+  font-size: 13px;
+  color: var(--text);
 }
 
 /* ---- chips ---- */
@@ -624,20 +551,6 @@ button {
   border-radius: 999px;
   padding: 3px 12px;
   animation: pop 0.2s ease both;
-}
-
-.chip button {
-  background: none;
-  border: none;
-  color: inherit;
-  padding: 0 0 0 2px;
-  font-size: 16px;
-  line-height: 1;
-  opacity: 0.7;
-}
-
-.chip button:hover {
-  opacity: 1;
 }
 
 .chip.ghost {
@@ -1348,10 +1261,6 @@ button {
     padding: 12px;
   }
 
-  .landing .brief {
-    padding: 20px;
-  }
-
   .overview,
   .pros-cons {
     grid-template-columns: 1fr;
@@ -1359,14 +1268,6 @@ button {
 
   .competitor-body {
     padding-left: 16px;
-  }
-
-  .step-label {
-    display: none;
-  }
-
-  .stepper .current .step-label {
-    display: inline;
   }
 }
 

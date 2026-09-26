@@ -8,7 +8,7 @@ export async function analyzeIdea(brief: Brief): Promise<Analysis> {
   await new Promise((r) => setTimeout(r, 1200))
   return {
     ...MOCK,
-    summary: `An app that ${brief.idea.trim().replace(/[.\s]+$/, '')}, built for ${brief.audience.trim()}.`,
+    summary: `An app that ${brief.idea.trim().replace(/[.\s]+$/, '')}${brief.audience.trim() ? `, built for ${brief.audience.trim()}` : ''}.`,
   }
 }
 

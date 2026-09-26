@@ -109,15 +109,19 @@ function publisherFor(artist: string) {
 }
 
 // The strip pauses on hover, so the tile holds still while its dropdown is open. If the dropdown
-// would poke past either window edge, skip it rather than show it cut off.
+// would poke past either side of the window, skip it rather than show it cut off; if there's no
+// room below the tile (the strip sits at the bottom of the first screen), open it upward.
 const DROP_WIDTH = 230
 function checkDropFits(e: SyntheticEvent<HTMLLIElement>) {
   const tile = e.currentTarget.querySelector('.top-app')
   if (!tile) return
-  const { left, width } = tile.getBoundingClientRect()
+  const { left, width, top, bottom } = tile.getBoundingClientRect()
   const center = left + width / 2
   const fits = center - DROP_WIDTH / 2 >= 0 && center + DROP_WIDTH / 2 <= document.documentElement.clientWidth
   e.currentTarget.dataset.drop = fits ? 'on' : 'off'
+  const height = e.currentTarget.querySelector<HTMLElement>('.top-app-drop')?.offsetHeight ?? 0
+  const roomBelow = window.innerHeight - bottom
+  e.currentTarget.dataset.dropDir = roomBelow < height + 12 && top > roomBelow ? 'up' : 'down'
 }
 
 const ROWS = [
@@ -192,16 +196,16 @@ export default function TopApps() {
 
   return (
     <section className="top-apps" aria-label="Top 10 free apps on the US App Store">
-      <div className="top-apps-track">
-        <ul className="top-apps-strip" style={{ animationDuration: `${apps.length * 3.5}s` }}>
-          {COPIES.map((copy) => apps.map((app, i) => tile(app, i, copy)))}
-        </ul>
-      </div>
       <p className="top-apps-caption">
         <span className={`top-apps-dot${live ? ' live' : ''}`} aria-hidden />
         App Store Top 10 · Free · {live ? 'live chart' : 'snapshot 26 Sep 2026'} · hover an app for company
         revenue, valuation and users ({FIGURES_AS_OF}, public reports)
       </p>
+      <div className="top-apps-track">
+        <ul className="top-apps-strip" style={{ animationDuration: `${apps.length * 3.5}s` }}>
+          {COPIES.map((copy) => apps.map((app, i) => tile(app, i, copy)))}
+        </ul>
+      </div>
     </section>
   )
 }
