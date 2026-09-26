@@ -1,0 +1,6 @@
+@AppositionBackend_HostAddress = http://localhost:5219
+
+GET {{AppositionBackend_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
