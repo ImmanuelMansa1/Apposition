@@ -1338,6 +1338,79 @@ button {
 .uniq-bar .described { background: var(--sev-medium); }
 .uniq-bar .related { background: color-mix(in srgb, var(--sev-medium) 40%, transparent); }
 
+/* revenue comparison */
+.revenue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.revenue-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+}
+
+.revenue-row .app-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  font-size: 17px;
+}
+
+.revenue-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.revenue-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  color: var(--text-h);
+}
+
+.revenue-estimate {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.revenue-bar {
+  position: relative;
+  height: 8px;
+  margin: 8px 0 6px;
+  border-radius: 4px;
+  background: var(--border);
+}
+
+.revenue-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.revenue-point {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg);
+  transform: translate(-50%, -50%);
+}
+
+.revenue-note {
+  margin-top: 10px;
+}
+
 /* plan */
 .plan-item {
   display: flex;

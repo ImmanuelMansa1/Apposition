@@ -86,6 +86,22 @@ export interface GeminiAnalysis {
   }[]
 }
 
+/** Monthly gross revenue estimated from public store signals (a range, never a reported figure). */
+export interface RevenueEstimate {
+  status: 'available' | 'unavailable'
+  estimate?: number
+  /** Where the real figure most likely falls */
+  likely?: [number, number]
+  /** Where it almost certainly falls */
+  wide?: [number, number]
+  tier?: 'established' | 'small'
+  confidence?: 'medium' | 'low'
+  basis?: string
+  chart_positions?: string[]
+  ratings?: number
+  paid_app?: boolean
+}
+
 export interface AnalysisResult {
   idea: { AppName: string; Description: string; Features: string[]; Target_Audience: string }
   /** The five closest listings, most similar first; app_index points here */
@@ -97,6 +113,9 @@ export interface AnalysisResult {
   review_status: 'available' | 'partial' | 'unavailable' | 'no_competitors'
   analysis: GeminiAnalysis | null
   analysis_status: 'available' | 'unavailable' | 'no_competitors'
+  /** Same order as results */
+  revenue?: RevenueEstimate[]
+  revenue_status?: 'available' | 'unavailable' | 'no_competitors'
 }
 
 export interface AnalysisResponse {

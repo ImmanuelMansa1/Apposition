@@ -9,7 +9,7 @@ import Showcase from './Showcase'
 import Starfield from './Starfield'
 import { scrollToTop, startSmoothScroll } from './SmoothScroll'
 import TopApps from './TopApps'
-import type { AnalysisResponse, AnalysisResult, Brief, RankedApp, Review, Verdict } from './types'
+import type { AnalysisResponse, AnalysisResult, Brief, RankedApp, RevenueEstimate, Review, Verdict } from './types'
 import './App.css'
 
 type View = 'input' | 'extracting' | 'features' | 'loading' | 'results'
@@ -802,6 +802,10 @@ function Results({ analysis: { brief, result }, onRestart }: ResultsProps) {
         </section>
       )}
 
+      {result.revenue_status === 'available' && result.revenue && (
+        <RevenueComparison apps={apps} revenue={result.revenue} />
+      )}
+
       {saveError && <p className="error">{saveError}</p>}
       <div className="actions sticky">
         <GlassButton variant="secondary" label="New idea" onTap={onRestart} />
@@ -823,6 +827,66 @@ interface CompetitorCardProps {
   reviews: Review[]
   open: boolean
   onToggle: () => void
+}
+
+/* ---------------- Revenue comparison ---------------- */
+
+type RevenueRow = { app: RankedApp; rank: number; rev: Required<Pick<RevenueEstimate, 'estimate' | 'likely'>> & RevenueEstimate }
+
+function RevenueComparison({ apps, revenue }: { apps: RankedApp[]; revenue: RevenueEstimate[] }) {
+  // Highest estimate first; every bar shares one log scale so apps compare at a glance.
+  const rows = apps
+    .map((app, i) => ({ app, rank: i + 1, rev: revenue[i] }))
+    .filter((r): r is RevenueRow => r.rev?.status === 'available' && !!r.rev.estimate && !!r.rev.likely)
+    .sort((a, b) => b.rev.estimate - a.rev.estimate)
+  if (!rows.length) return null
+
+  const lo = Math.log(Math.min(...rows.map((r) => r.rev.likely[0])))
+  const hi = Math.log(Math.max(...rows.map((r) => r.rev.likely[1])))
+  const pos = (v: number) => `${((Math.log(v) - lo) / Math.max(hi - lo, 1e-9)) * 100}%`
+
+  return (
+    <section>
+      <div className="section-head">
+        <h2>Estimated revenue</h2>
+        <span className="muted">Per month, before store fees</span>
+      </div>
+      <ul className="revenue-list">
+        {rows.map(({ app, rank, rev }) => (
+          <li key={app.TrackId ?? rank} className="card revenue-row">
+            <AppIcon name={app.AppName} url={app.ArtworkUrl || undefined} />
+            <div className="revenue-body">
+              <p className="revenue-head">
+                <strong>
+                  {rank}. {app.AppName}
+                </strong>
+                <span className="revenue-estimate">~{money(rev.estimate)} / mo</span>
+              </p>
+              <div
+                className="revenue-bar"
+                role="img"
+                aria-label={`Likely ${money(rev.likely[0])} to ${money(rev.likely[1])} per month`}
+              >
+                <span className="revenue-range" style={{ left: pos(rev.likely[0]), width: `calc(${pos(rev.likely[1])} - ${pos(rev.likely[0])})` }} />
+                <span className="revenue-point" style={{ left: pos(rev.estimate) }} />
+              </div>
+              <p className="muted small">
+                likely {money(rev.likely[0])}–{money(rev.likely[1])} ·{' '}
+                <span className={`sev ${rev.confidence === 'medium' ? 'medium' : 'high'}`}>{rev.confidence} confidence</span> ·
+                based on {rev.basis}
+                {rev.paid_app && ' · paid app: not validated, treat as very rough'}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <p className="muted small section-note revenue-note">
+        Estimated from public App Store ratings and top-grossing chart positions, not from reported revenue. In testing
+        on apps with known revenue, the likely range held about 3 in 4 times for established apps and 2 in 3 times for
+        small ones.
+      </p>
+    </section>
+  )
 }
 
 function CompetitorCard({ rank, app, explanation, reviews, open, onToggle }: CompetitorCardProps) {
@@ -1045,6 +1109,14 @@ function Ring({ value, basis }: { value: number; basis: string }) {
 }
 
 /* ---------------- Helpers ---------------- */
+
+// $1.2M, $85K, $900: the estimates are ranges, so two significant figures is plenty.
+function money(v: number) {
+  if (v >= 1e9) return `$${+(v / 1e9).toPrecision(2)}B`
+  if (v >= 1e6) return `$${+(v / 1e6).toPrecision(2)}M`
+  if (v >= 1e3) return `$${+(v / 1e3).toPrecision(2)}K`
+  return `$${Math.round(v)}`
+}
 
 function compact(n: number) {
   return Intl.NumberFormat('en', { notation: 'compact' }).format(n)

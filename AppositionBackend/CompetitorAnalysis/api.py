@@ -4,6 +4,7 @@ Run from this folder:  uvicorn api:app --port 8000
 """
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 from typing import Annotated
 
@@ -27,11 +28,14 @@ from gemini_api import (
     extract_brief,
 )
 from generate_market_analysis import report_bytes
+from revenue import estimate_revenue
 from market_data import market_data_from_result
 
 
 app = FastAPI()
 logger = logging.getLogger(__name__)
+# Revenue lookups run beside review collection and Gemini instead of adding to them.
+_background = ThreadPoolExecutor(max_workers=4)
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -155,6 +159,8 @@ def similarity(request: SimilarityRequest):
             "review_status": "no_competitors",
             "analysis": None,
             "analysis_status": "no_competitors",
+            "revenue": [],
+            "revenue_status": "no_competitors",
         }
 
     # Score first. Every subsequent app_index uses this ranked order.
@@ -164,6 +170,9 @@ def similarity(request: SimilarityRequest):
     # Compare each user feature with passages from those five listings.
     feature_matrix = build_feature_matrix(user_input, top_five, model)
     attach_feature_matches(top_five, feature_matrix)
+
+    # Revenue estimates only need the ranked listings; start them now.
+    revenue_job = _background.submit(estimate_revenue, top_five["apps"])
 
     # Gather up to five recent 1- or 2-star reviews per competitor.
     try:
@@ -202,6 +211,15 @@ def similarity(request: SimilarityRequest):
         logger.exception("Gemini analysis failed")
         analysis_status = "unavailable"
 
+    # Estimated from public store signals; a range, never a reported figure.
+    try:
+        revenue = revenue_job.result(timeout=60)
+        revenue_status = "available" if any(r.get("status") == "available" for r in revenue) else "unavailable"
+    except Exception:
+        logger.exception("Revenue estimation failed")
+        revenue = [{"status": "unavailable"} for _ in top_five["apps"]]
+        revenue_status = "unavailable"
+
     return {
         "idea": user_input,
         "results": top_five["apps"],
@@ -220,6 +238,9 @@ def similarity(request: SimilarityRequest):
         ),
         "analysis": analysis,
         "analysis_status": analysis_status,
+        # Same order as results.
+        "revenue": revenue,
+        "revenue_status": revenue_status,
     }
 
 
