@@ -29,7 +29,7 @@ var allowedOrigins = (builder.Configuration["AllowedOrigins"] ?? "")
     .ToArray();
 
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
-    policy.WithOrigins(allowedOrigins).AllowAnyHeader().WithMethods("POST")));
+    policy.AllowAnyOrigin().AllowAnyHeader().WithMethods("POST")));
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
