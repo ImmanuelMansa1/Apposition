@@ -11,7 +11,7 @@ public class ItunesService
 
     public ItunesService(HttpClient httpClient) => _httpClient = httpClient;
 
-    public async Task<List<Competitor>> Search(AnalysisRequest request)
+    public async Task<List<Competitor>> Search(IdeaBrief brief)
     {
         // Apple searches short terms more reliably than a full app pitch.
         var ignored = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -20,22 +20,20 @@ public class ItunesService
             "with", "for", "to", "and", "of", "is", "allows", "users"
         };
         var ideaTerm = string.Join(" ", Regex.Matches(
-                request.AppIdea ?? "", @"[\p{L}\p{N}]+")
+                brief.AppIdea ?? "", @"[\p{L}\p{N}]+")
             .Cast<Match>()
             .Select(match => match.Value)
             .Where(word => !ignored.Contains(word))
             .Take(5));
 
-var terms = new[] { ideaTerm }
-    .Concat(request.KeyFeatures ?? [])
-    .Select(term => term?.Trim() ?? "")
-    .Where(term => !string.IsNullOrWhiteSpace(term))
-    .Distinct(StringComparer.OrdinalIgnoreCase)
-    .ToList();
-
-if (terms.Count > 10)
-    throw new ArgumentException(
-        "Use at most ten distinct iTunes search terms per request.");
+        // Keep to ten searches per request; the idea term comes first.
+        var terms = new[] { ideaTerm }
+            .Concat(brief.KeyFeatures ?? [])
+            .Select(term => term?.Trim() ?? "")
+            .Where(term => !string.IsNullOrWhiteSpace(term))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(10)
+            .ToList();
 
         var batches = new List<List<ItunesApp>>();
 
@@ -46,18 +44,27 @@ if (terms.Count > 10)
                 $"?term={Uri.EscapeDataString(term)}" +
                 $"&country=us&entity=software&limit=10";
 
-            using var response = await _httpClient.GetAsync(url);
-            response.EnsureSuccessStatusCode();
+            try
+            {
+                using var response = await _httpClient.GetAsync(url);
+                response.EnsureSuccessStatusCode();
 
-            var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<ItunesResponse>(
-                json,
-                new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
+                var json = await response.Content.ReadAsStringAsync();
+                var result = JsonSerializer.Deserialize<ItunesResponse>(
+                    json,
+                    new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
 
-            batches.Add(result?.Results ?? []);
+                batches.Add(result?.Results ?? []);
+            }
+            catch (Exception error) when (
+                error is HttpRequestException or TaskCanceledException or JsonException)
+            {
+                // One failed search should not sink the others.
+                batches.Add([]);
+            }
         }
 
         // Take results across searches, keeping at most ten distinct app IDs.

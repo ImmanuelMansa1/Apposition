@@ -8,39 +8,71 @@ namespace AppositionBackend.Controllers;
 [Route("api/[controller]")]
 public class AnalysisController : ControllerBase
 {
+    private const string DocxMime =
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
     private readonly ItunesService _itunesService;
     private readonly PythonService _pythonService;
+    private readonly ILogger<AnalysisController> _logger;
 
     public AnalysisController(
         ItunesService itunesService,
-        PythonService pythonService)
+        PythonService pythonService,
+        ILogger<AnalysisController> logger)
     {
         _itunesService = itunesService;
         _pythonService = pythonService;
+        _logger = logger;
     }
 
     [HttpPost]
-    public async Task<ActionResult<List<CompetitorResult>>> Analyze(
-        AnalysisRequest request)
+    public async Task<IActionResult> Analyze(IdeaPrompt request)
     {
-        if (string.IsNullOrWhiteSpace(request.AppIdea))
-            return BadRequest("App idea is required.");
+        if (string.IsNullOrWhiteSpace(request.Prompt))
+            return BadRequest("Describe your app idea.");
 
-        if (string.IsNullOrWhiteSpace(request.KeyFeatures))
-            return BadRequest("Key features are required.");
+        if (request.Prompt.Length > 2000)
+            return BadRequest("Keep the idea under 2,000 characters.");
 
-        if (string.IsNullOrWhiteSpace(request.TargetAudience))
-            return BadRequest("Target audience is required.");
+        try
+        {
+            // Gemini pulls the idea, features and audience out of the pitch
+            var brief = await _pythonService.ExtractBrief(request.Prompt);
 
-        // Get potential competitors from iTunes
-        var candidates = await _itunesService.Search(request);
+            // Get potential competitors from iTunes
+            var candidates = await _itunesService.Search(brief);
 
-        // Send candidates to Python and get the top 10
-        var topCompetitors = await _pythonService.GetTopCompetitors(
-            request,
-            candidates
-        );
+            // Python ranks the top five, then adds evidence, reviews and analysis
+            var result = await _pythonService.Analyze(brief, candidates);
 
-        return Ok(topCompetitors);
+            return Ok(new { brief, result });
+        }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException)
+        {
+            _logger.LogError(error, "Analysis pipeline failed");
+            return Problem(
+                "The analysis service is unavailable. Check that the Python API is running on port 8000.",
+                statusCode: StatusCodes.Status502BadGateway);
+        }
+    }
+
+    [HttpPost("report")]
+    public async Task<IActionResult> Report(ReportRequest request)
+    {
+        if (request.Result.ValueKind != System.Text.Json.JsonValueKind.Object)
+            return BadRequest("Send the analysis result to build a report.");
+
+        try
+        {
+            var bytes = await _pythonService.BuildReport(request);
+            return File(bytes, DocxMime, "market_analysis.docx");
+        }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException)
+        {
+            _logger.LogError(error, "Report generation failed");
+            return Problem(
+                "The market analysis could not be generated.",
+                statusCode: StatusCodes.Status502BadGateway);
+        }
     }
 }

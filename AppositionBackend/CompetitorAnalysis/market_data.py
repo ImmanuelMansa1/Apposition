@@ -1,109 +1,125 @@
-"""Streamlit dashboard for a saved Apposition engine run and Gemini analysis."""
+"""Turn an engine run and its Gemini analysis into one report-ready record.
 
+Both the Word report (generate_market_analysis.py) and the Streamlit
+dashboard (market_insights.py) read this shape, so neither has to know
+whether the run came from the live API or from files saved by local_test.py.
+"""
+
+import json
 from pathlib import Path
-from tempfile import TemporaryDirectory
-
-import streamlit as st
-
-from generate_market_analysis import make_report
-from market_data import load_market_data
 
 
-st.set_page_config(page_title="Market Insights", page_icon="📊", layout="wide")
-st.title("Market Insights")
-st.caption("App Store competitor descriptions, feature evidence, and Gemini analysis")
+def _read_json(path):
+    return json.loads(Path(path).read_text(encoding="utf-8"))
 
-ROOT = Path(__file__).resolve().parent
-DEFAULT_DIR = ROOT / "AppositionBackend" / "CompetitorAnalysis"
-if not DEFAULT_DIR.is_dir():
-    DEFAULT_DIR = ROOT / "CompetitorAnalysis"
 
-with st.sidebar:
-    st.header("Run files")
-    engine_path = st.text_input("Engine results", str(DEFAULT_DIR / "itunes_test_results.json"))
-    gemini_path = st.text_input("Gemini analysis", str(DEFAULT_DIR / "gemini_analysis.json"))
-    review_path = st.text_input("Negative reviews (optional)", "")
-
-try:
-    data = load_market_data(engine_path,
-                            gemini_path if Path(gemini_path).is_file() else None,
-                            review_path if review_path else None)
-except (OSError, ValueError, KeyError, TypeError) as error:
-    st.error(f"Cannot load this run: {error}")
-    st.stop()
-
-idea = data["idea"]
-st.subheader(idea.get("AppName") or idea.get("Description") or "Your app idea")
-st.caption("Similarity indices rank listing evidence; they are not percentages of shared features.")
-
-a, b, c = st.columns(3)
-a.metric("Ranked competitors", len(data["apps"]))
-b.metric("Candidates checked", data["candidate_count"] or "Unknown")
-c.metric("Search term source", data["query_source"].title())
-
-if data["overall_summary"]:
-    st.info(data["overall_summary"])
-    # Give the browser the generated document so users can save it locally.
-    # Writing to Path.home()/Desktop here would save on the server instead.
-    with TemporaryDirectory() as folder:
-        report_path = make_report(data, Path(folder) / "market_analysis.docx")
-        report_bytes = report_path.read_bytes()
-    st.download_button(
-        "Download market analysis",
-        data=report_bytes,
-        file_name="market_analysis.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    )
-else:
-    st.info("Gemini analysis not loaded. Add its JSON file in the sidebar for feature verdicts and recommendations.")
-
-rankings, features, opportunities = st.tabs(("Competitors", "Feature comparison", "Opportunities"))
-
-with rankings:
-    st.subheader("Closest app listings")
-    st.bar_chart(
-        [{"App": app["name"], "Similarity index": app["index"]} for app in data["apps"]],
-        x="App", y="Similarity index", horizontal=True,
-        x_label="Similarity index (0–100)",
-    )
-    for index, app in enumerate(data["apps"]):
-        with st.expander(f"{index + 1}. {app['name']}  ·  {app['index']:.1f} / 100  ·  {app['price']}"):
-            st.write(data["competitor_summaries"].get(index, "No Gemini explanation for this app."))
-            st.caption(f"Developer: {app['developer'] or 'Unknown'}")
-            st.caption(f"Score basis: {app['score_basis']}")
-
-with features:
-    if not data["feature_comparison"]:
-        st.info("Feature verdicts require the saved Gemini analysis JSON.")
-    else:
-        symbols = {"supported": "Supported", "related": "Related", "not_established": "Not established"}
+def _feature_comparison(analysis, feature_matrix, app_count):
+    # Gemini's verified verdicts, with each row's cells put in ranked-app order.
+    if analysis and analysis.get("feature_comparison"):
         rows = []
-        for row in data["feature_comparison"]:
-            rows.append({"Your feature": row["feature"], **{
-                app["name"]: symbols[row["cells"][index]["verdict"]]
-                for index, app in enumerate(data["apps"])
-            }})
-        st.dataframe(rows, hide_index=True, use_container_width=True)
-        feature = st.selectbox("Inspect listing evidence", [row["feature"] for row in data["feature_comparison"]])
-        selected = next(row for row in data["feature_comparison"] if row["feature"] == feature)
-        for index, app in enumerate(data["apps"]):
-            cell = selected["cells"][index]
-            st.markdown(f"**{app['name']} — {symbols[cell['verdict']]}**")
-            st.caption(cell["evidence"] or "The supplied listing does not establish this feature.")
+        for row in analysis["feature_comparison"]:
+            by_index = {cell["app_index"]: cell for cell in row["competitors"]}
+            rows.append({
+                "feature": row["feature"],
+                "cells": [
+                    {"verdict": by_index[i]["verdict"], "evidence": by_index[i]["evidence"]}
+                    for i in range(app_count)
+                ],
+            })
+        return rows
 
-with opportunities:
-    st.subheader("Ways to differentiate")
-    if data["differentiation"]:
-        for item in data["differentiation"]:
-            st.markdown(f"**{item['idea']}** — {item['rationale']}")
-    else:
-        st.info("No Gemini recommendations loaded.")
+    # Without Gemini, only the embedding candidates exist. They are labelled as
+    # unverified rather than passed off as supported features.
+    rows = []
+    for row in (feature_matrix or {}).get("rows", []):
+        rows.append({
+            "feature": row["feature"],
+            "cells": [
+                {
+                    "verdict": "candidate" if cell["candidate_match"] else "not_established",
+                    "evidence": cell["evidence"][0]["passage"]
+                    if cell["candidate_match"] and cell["evidence"] else "",
+                }
+                for cell in row["cells"]
+            ],
+        })
+    return rows
 
-    st.subheader("Negative review signals")
-    st.caption(data["review_status"])
-    for item in data["review_improvements"]:
-        st.markdown(f"**{item['complaint']}** — {item['recommendation']}")
-        st.caption("Review references: " + ", ".join(
-            f"{data['apps'][ref['app_index']]['name']} review {ref['review_index'] + 1}"
-            for ref in item["review_refs"]
-        ))
+
+def _build(idea, apps, candidate_count, analysis, reviews, feature_matrix,
+           query_source, review_status, planned=()):
+    analysis = analysis or {}
+    differentiation = analysis.get("differentiation", [])
+    if planned:
+        # The founder's ticked ideas only, in the order Gemini ranked them.
+        chosen = set(planned)
+        differentiation = [item for i, item in enumerate(differentiation) if i in chosen]
+
+    return {
+        "idea": idea,
+        "apps": [
+            {
+                "name": app["AppName"],
+                "index": float(app.get("similarity_percentage", 0)),
+                "price": app.get("Price") or "Unknown",
+                "developer": app.get("Developer", ""),
+                "score_basis": "Cosine similarity of the idea and the full App Store description",
+            }
+            for app in apps
+        ],
+        "candidate_count": candidate_count,
+        "query_source": query_source,
+        "overall_summary": analysis.get("overall_summary", ""),
+        "competitor_summaries": {
+            item["app_index"]: item["explanation"]
+            for item in analysis.get("competitor_summaries", [])
+        },
+        "feature_comparison": _feature_comparison(analysis, feature_matrix, len(apps)),
+        "differentiation": differentiation,
+        "review_improvements": analysis.get("review_improvements", []),
+        "reviews": (reviews or {}).get("apps", []),
+        "review_status": review_status,
+        "example": False,
+    }
+
+
+def market_data_from_result(result, planned=()):
+    """Build report data from one /similarity response."""
+    return _build(
+        idea=result["idea"],
+        apps=result["results"],
+        candidate_count=result.get("candidate_count"),
+        analysis=result.get("analysis"),
+        reviews=result.get("reviews"),
+        feature_matrix=result.get("feature_matrix"),
+        query_source=result.get("query_source", "gemini"),
+        review_status=result.get("review_status", "unknown"),
+        planned=planned,
+    )
+
+
+def load_market_data(engine_path, gemini_path=None, review_path=None):
+    """Build report data from files saved on disk.
+
+    engine_path is either local_test.py's itunes_test_results.json or a saved
+    /similarity response. gemini_path holds analyze_competitors() output.
+    """
+    engine = _read_json(engine_path)
+    if "results" in engine and "idea" in engine:
+        # A saved API response already carries everything; a separate Gemini
+        # file, if given, replaces its analysis.
+        if gemini_path:
+            engine = {**engine, "analysis": _read_json(gemini_path)}
+        return market_data_from_result(engine)
+
+    reviews = _read_json(review_path) if review_path else None
+    return _build(
+        idea=engine["user_input"],
+        apps=engine["top_five"],
+        candidate_count=engine.get("candidate_count"),
+        analysis=_read_json(gemini_path) if gemini_path else None,
+        reviews=reviews,
+        feature_matrix=None,
+        query_source="keywords",
+        review_status="Loaded from file" if reviews else "No review file supplied",
+    )

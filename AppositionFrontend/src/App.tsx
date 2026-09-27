@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { SubmitEvent, KeyboardEvent } from 'react'
-import { analyzeIdea } from './api'
+import { analyzeIdea, downloadReport } from './api'
 import LiquidGlassButton from './LiquidGlassButton'
 import type { LiquidGlassButtonProps } from './LiquidGlassButton'
 import Preloader from './Preloader'
@@ -9,13 +9,11 @@ import Showcase from './Showcase'
 import Starfield from './Starfield'
 import { scrollToTop, startSmoothScroll } from './SmoothScroll'
 import TopApps from './TopApps'
-import type { Analysis, Brief, Competitor, Differentiator, Severity, Weakness } from './types'
+import type { AnalysisResponse, AnalysisResult, RankedApp, Review, Verdict } from './types'
 import './App.css'
 
 type View = 'input' | 'loading' | 'results'
 type SortKey = 'similarity' | 'rating' | 'price'
-
-const EMPTY: Brief = { idea: '', features: [], audience: '' }
 
 const HEADLINES = [
   'Test and build faster with Apposition.',
@@ -30,7 +28,8 @@ const STAGES = [
   'Reading competitor reviews',
   'Building your strategy',
 ]
-const STAGE_MS = 800
+// The real pipeline takes 20–60 s; the last stage holds until it answers.
+const STAGE_MS = 2500
 
 // One-line prompts; each names the idea, a few features and who it's for.
 const EXAMPLES = [
@@ -39,9 +38,6 @@ const EXAMPLES = [
   'matches beginner runners with buddies at the same pace, with route sharing and group runs',
 ]
 
-const SEVERITY_WEIGHT: Record<Severity, number> = { high: 3, medium: 2, low: 1 }
-
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 type Theme = 'light' | 'dark'
 
@@ -52,8 +48,8 @@ const ThemeContext = createContext<Theme>('light')
 
 function App() {
   const [view, setView] = useState<View>('input')
-  const [brief, setBrief] = useState<Brief>(EMPTY)
-  const [analysis, setAnalysis] = useState<Analysis | null>(null)
+  const [prompt, setPrompt] = useState('')
+  const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [preloading, setPreloading] = useState(true)
   const [theme, setTheme] = useState<Theme>(initialTheme)
@@ -80,8 +76,7 @@ function App() {
     setView('loading')
     setError(null)
     try {
-      const [result] = await Promise.all([analyzeIdea(brief), wait(STAGES.length * STAGE_MS)])
-      setAnalysis(result)
+      setAnalysis(await analyzeIdea(prompt.trim()))
       setView('results')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong')
@@ -95,7 +90,7 @@ function App() {
   }
 
   const restart = () => {
-    setBrief(EMPTY)
+    setPrompt('')
     setAnalysis(null)
     setView('input')
   }
@@ -139,7 +134,7 @@ function App() {
 
         <main className={view === 'results' ? 'wide' : undefined}>
           {view === 'input' && (
-            <BriefForm brief={brief} setBrief={setBrief} onSubmit={run} error={error} introDone={!preloading} />
+            <BriefForm prompt={prompt} setPrompt={setPrompt} onSubmit={run} error={error} introDone={!preloading} />
           )}
           {view === 'input' && <TopApps />}
           {landing && (
@@ -148,7 +143,7 @@ function App() {
             </a>
           )}
           {view === 'loading' && <Loading />}
-          {view === 'results' && analysis && <Results brief={brief} analysis={analysis} onRestart={restart} />}
+          {view === 'results' && analysis && <Results analysis={analysis} onRestart={restart} />}
         </main>
 
         {landing && <Showcase onTry={tryIt} />}
@@ -162,8 +157,8 @@ function App() {
 /* ---------------- Prompt (ChatGPT-style composer) ---------------- */
 
 interface BriefFormProps {
-  brief: Brief
-  setBrief: (b: Brief) => void
+  prompt: string
+  setPrompt: (p: string) => void
   onSubmit: () => void
   error: string | null
   introDone: boolean
@@ -171,8 +166,8 @@ interface BriefFormProps {
 
 const MAX_PROMPT_PX = 220
 
-function BriefForm({ brief, setBrief, onSubmit, error, introDone }: BriefFormProps) {
-  const ready = brief.idea.trim().length > 0
+function BriefForm({ prompt, setPrompt, onSubmit, error, introDone }: BriefFormProps) {
+  const ready = prompt.trim().length > 0
 
   // Grow with the text like a chat composer, up to a cap, then scroll.
   const autosize = (el: HTMLTextAreaElement | null) => {
@@ -203,9 +198,10 @@ function BriefForm({ brief, setBrief, onSubmit, error, introDone }: BriefFormPro
           ref={autosize}
           autoFocus
           rows={1}
-          value={brief.idea}
+          value={prompt}
+          maxLength={2000}
           onChange={(e) => {
-            setBrief({ ...brief, idea: e.target.value })
+            setPrompt(e.target.value)
             autosize(e.target)
           }}
           onKeyDown={onKey}
@@ -224,7 +220,7 @@ function BriefForm({ brief, setBrief, onSubmit, error, introDone }: BriefFormPro
 
       <div className="examples">
         {EXAMPLES.map((ex) => (
-          <button type="button" key={ex} className="chip ghost" onClick={() => setBrief({ ...brief, idea: ex })}>
+          <button type="button" key={ex} className="chip ghost" onClick={() => setPrompt(ex)}>
             {ex}
           </button>
         ))}
@@ -262,34 +258,49 @@ function Loading() {
 
 /* ---------------- Results ---------------- */
 
+// Gemini's verdict when it ran; otherwise the unverified embedding hint.
+type CellVerdict = Verdict | 'candidate'
+
+const VERDICT_LABEL: Record<CellVerdict, string> = {
+  supported: 'Described',
+  related: 'Related',
+  candidate: 'Candidate',
+  not_established: 'Not shown',
+}
+
+interface GridRow {
+  feature: string
+  cells: { verdict: CellVerdict; evidence: string }[]
+}
+
 interface ResultsProps {
-  brief: Brief
-  analysis: Analysis
+  analysis: AnalysisResponse
   onRestart: () => void
 }
 
-type RankedWeakness = Weakness & { app: string }
-
-function Results({ brief, analysis, onRestart }: ResultsProps) {
+function Results({ analysis: { brief, result }, onRestart }: ResultsProps) {
+  const apps = result.results
+  const gemini = result.analysis
   const [sort, setSort] = useState<SortKey>('similarity')
-  const [open, setOpen] = useState<string | null>(analysis.competitors[0]?.id ?? null)
+  const [open, setOpen] = useState<number | null>(apps.length ? 0 : null)
   const [planned, setPlanned] = useState<Set<number>>(new Set())
+  const [picked, setPicked] = useState<{ row: number; app: number } | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
-  const competitors = useMemo(() => {
-    const list = [...analysis.competitors]
-    if (sort === 'similarity') list.sort((a, b) => b.similarity - a.similarity)
-    if (sort === 'rating') list.sort((a, b) => b.rating - a.rating)
-    if (sort === 'price') list.sort((a, b) => a.price - b.price)
-    return list
-  }, [analysis, sort])
+  // Sorting only reorders the cards; each keeps its ranked index, which the
+  // reviews, explanations and evidence grid all refer to.
+  const order = useMemo(() => {
+    const indices = apps.map((_, i) => i)
+    if (sort === 'rating') indices.sort((a, b) => apps[b].Rating - apps[a].Rating)
+    if (sort === 'price') indices.sort((a, b) => priceValue(apps[a].Price) - priceValue(apps[b].Price))
+    return indices
+  }, [apps, sort])
 
-  const weaknesses = useMemo<RankedWeakness[]>(
-    () =>
-      analysis.competitors
-        .flatMap((c) => c.weaknesses.map((w) => ({ ...w, app: c.name })))
-        .sort((a, b) => SEVERITY_WEIGHT[b.severity] * b.mentions - SEVERITY_WEIGHT[a.severity] * a.mentions),
-    [analysis],
-  )
+  const grid = useMemo(() => evidenceGrid(result), [result])
+
+  const explanation = (i: number) => gemini?.competitor_summaries.find((s) => s.app_index === i)?.explanation
+  const reviewsFor = (i: number) => result.reviews.apps[i]?.reviews ?? []
 
   const togglePlanned = (i: number) =>
     setPlanned((prev) => {
@@ -299,33 +310,74 @@ function Results({ brief, analysis, onRestart }: ResultsProps) {
       return next
     })
 
+  const save = async () => {
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await downloadReport(result, [...planned].sort((a, b) => a - b))
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'The report could not be downloaded')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!apps.length) {
+    return (
+      <div className="results">
+        <p className="card empty">
+          No App Store listings matched this idea. Try naming what the app does in plainer words.
+        </p>
+        <div className="actions">
+          <GlassButton variant="secondary" label="New idea" onTap={onRestart} />
+        </div>
+      </div>
+    )
+  }
+
+  const pickedCell = picked && grid[picked.row]?.cells[picked.app]
+
   return (
     <div className="results">
-      <p className="demo-note">Demo data. Live App Store results arrive once the backend is connected.</p>
+      {brief.status === 'unavailable' && (
+        <p className="notice">Gemini couldn't read the pitch, so no features were extracted. Ranking used your text as written.</p>
+      )}
+      {result.analysis_status === 'unavailable' && (
+        <p className="notice">Gemini analysis is unavailable for this run. Feature cells show unverified embedding matches.</p>
+      )}
+      {result.review_status === 'partial' && <p className="notice">Reviews could not be loaded for some apps.</p>}
 
       <section className="overview">
         <div className="card idea-card">
-          <h2>Your idea</h2>
-          <p className="summary">{analysis.summary}</p>
-          {brief.features.length > 0 && (
+          <h2>{brief.appName || 'Your idea'}</h2>
+          <p className="summary">{brief.appIdea}</p>
+          {brief.keyFeatures.length > 0 && (
             <div className="chips">
-              {brief.features.map((f) => (
+              {brief.keyFeatures.map((f) => (
                 <span key={f} className="chip">{f}</span>
               ))}
             </div>
           )}
+          {(brief.targetAudience || brief.featuresInferred) && (
+            <p className="muted small">
+              {brief.targetAudience && `For ${brief.targetAudience}${brief.audienceInferred ? ' (inferred)' : ''}. `}
+              {brief.featuresInferred && 'Features were inferred from your idea.'}
+            </p>
+          )}
+          {gemini && <p>{gemini.overall_summary}</p>}
         </div>
-        <div className="card gauge-card">
-          <Gauge value={analysis.saturation} />
-          <p className="gauge-caption">
-            {analysis.competitors.length} similar apps found. {saturationText(analysis.saturation)}
+        <div className="card stat-card">
+          <strong>{apps.length}</strong>
+          <span>closest of {result.candidate_count} App Store listings</span>
+          <p className="muted small">
+            Top match: {apps[0].AppName}, {Math.round(apps[0].similarity_percentage)}% similar
           </p>
         </div>
       </section>
 
       <section>
         <div className="section-head">
-          <h2>Top competitors</h2>
+          <h2>Closest apps</h2>
           <div className="segmented" role="group" aria-label="Sort competitors">
             {(['similarity', 'rating', 'price'] as SortKey[]).map((k) => (
               <button key={k} type="button" className={sort === k ? 'on' : undefined} onClick={() => setSort(k)}>
@@ -334,93 +386,212 @@ function Results({ brief, analysis, onRestart }: ResultsProps) {
             ))}
           </div>
         </div>
+        <p className="muted small section-note">
+          Similarity compares your idea with each full listing. It isn't a share of matching features.
+        </p>
         <ul className="competitors">
-          {competitors.map((c) => (
+          {order.map((i) => (
             <CompetitorCard
-              key={c.id}
-              competitor={c}
-              open={open === c.id}
-              onToggle={() => setOpen(open === c.id ? null : c.id)}
+              key={apps[i].TrackId ?? i}
+              rank={i + 1}
+              app={apps[i]}
+              explanation={explanation(i)}
+              reviews={reviewsFor(i)}
+              open={open === i}
+              onToggle={() => setOpen(open === i ? null : i)}
             />
           ))}
         </ul>
       </section>
 
-      <section>
-        <div className="section-head">
-          <h2>How to beat them</h2>
-          <span className="muted">Ranked by severity × how often users complain</span>
-        </div>
-        <ol className="beat-list">
-          {weaknesses.map((w, i) => (
-            <li key={`${w.app}-${w.issue}`} className="card">
-              <span className="rank">{i + 1}</span>
-              <div>
-                <p className="issue">
-                  {w.issue} <span className={`sev ${w.severity}`}>{w.severity}</span>
-                </p>
-                <p className="muted small">
-                  {w.app} · {w.mentions.toLocaleString()} review mentions
-                </p>
-                <p className="fix">→ {w.howToBeat}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <section>
-        <div className="section-head">
-          <h2>Your differentiation plan</h2>
-          <span className="muted">
-            {planned.size}/{analysis.differentiators.length} planned
-          </span>
-        </div>
-        <ul className="plan">
-          {analysis.differentiators.map((d, i) => (
-            <li key={d.title}>
-              <label className={`card plan-item${planned.has(i) ? ' checked' : ''}`}>
-                <input type="checkbox" checked={planned.has(i)} onChange={() => togglePlanned(i)} />
-                <div>
-                  <p>
-                    <span className={`tag ${d.type}`}>{d.type}</span> <strong>{d.title}</strong>
+      {grid.length > 0 && (
+        <section>
+          <div className="section-head">
+            <h2>Feature evidence</h2>
+            <span className="muted">
+              {gemini ? 'Checked by Gemini against listing text' : 'Unverified embedding matches'}
+            </span>
+          </div>
+          <div className="card evidence">
+            <div className="evidence-scroll">
+              <table className="evidence-grid">
+                <thead>
+                  <tr>
+                    <th scope="col">Your feature</th>
+                    {apps.map((a, i) => (
+                      <th key={a.TrackId ?? i} scope="col">
+                        <AppIcon name={a.AppName} url={a.ArtworkUrl || undefined} />
+                        <span>{a.AppName}</span>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {grid.map((row, r) => (
+                    <tr key={row.feature}>
+                      <th scope="row">{row.feature}</th>
+                      {row.cells.map((cell, i) => (
+                        <td key={i}>
+                          <button
+                            type="button"
+                            className={`verdict ${cell.verdict}${picked?.row === r && picked.app === i ? ' on' : ''}`}
+                            onClick={() => setPicked({ row: r, app: i })}
+                            aria-label={`${row.feature} in ${apps[i].AppName}: ${VERDICT_LABEL[cell.verdict]}`}
+                          >
+                            {VERDICT_LABEL[cell.verdict]}
+                          </button>
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="evidence-detail" aria-live="polite">
+              {picked && pickedCell ? (
+                <>
+                  <p className="small">
+                    <strong>{grid[picked.row].feature}</strong> · {apps[picked.app].AppName}
                   </p>
-                  <p className="muted small">{d.detail}</p>
+                  {pickedCell.evidence ? (
+                    <blockquote>“{pickedCell.evidence}”</blockquote>
+                  ) : (
+                    <p className="muted small">
+                      The listing doesn't mention this. That doesn't prove the app lacks it.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="muted small">Select a cell to see the listing passage behind it.</p>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      <section>
+        <div className="section-head">
+          <h2>Fix what users complain about</h2>
+          <span className="muted">From recent 1–2★ competitor reviews</span>
+        </div>
+        {gemini?.review_improvements.length ? (
+          <ol className="beat-list">
+            {gemini.review_improvements.map((item, i) => (
+              <li key={item.complaint} className="card">
+                <span className="rank">{i + 1}</span>
+                <div>
+                  <p className="issue">{item.complaint}</p>
+                  <p className="fix">→ {item.recommendation}</p>
+                  <ul className="citations">
+                    {item.review_refs.map((ref) => {
+                      const review = reviewsFor(ref.app_index)[ref.review_index]
+                      return (
+                        review && (
+                          <li key={`${ref.app_index}-${ref.review_index}`}>
+                            <span className="muted">
+                              {apps[ref.app_index]?.AppName} · {stars(review.rating)}
+                            </span>{' '}
+                            “{review.title}”
+                          </li>
+                        )
+                      )
+                    })}
+                  </ul>
                 </div>
-              </label>
-            </li>
-          ))}
-        </ul>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="card empty">
+            No review-backed recommendations this time. Reviews may not have loaded, or the recent ones named no
+            clear problem.
+          </p>
+        )}
       </section>
 
+      {gemini && gemini.differentiation.length > 0 && (
+        <section>
+          <div className="section-head">
+            <h2>Ways to stand out</h2>
+            <span className="muted">
+              {planned.size}/{gemini.differentiation.length} planned
+            </span>
+          </div>
+          <ul className="plan">
+            {gemini.differentiation.map((d, i) => (
+              <li key={d.idea}>
+                <label className={`card plan-item${planned.has(i) ? ' checked' : ''}`}>
+                  <input type="checkbox" checked={planned.has(i)} onChange={() => togglePlanned(i)} />
+                  <div>
+                    <p>
+                      <strong>{d.idea}</strong>
+                    </p>
+                    <p className="muted small">{d.rationale}</p>
+                    {d.supporting_app_indices.length > 0 && (
+                      <p className="muted small">
+                        Compared with{' '}
+                        {d.supporting_app_indices
+                          .map((j) => apps[j]?.AppName)
+                          .filter(Boolean)
+                          .join(', ')}
+                      </p>
+                    )}
+                  </div>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {saveError && <p className="error">{saveError}</p>}
       <div className="actions sticky">
         <GlassButton variant="secondary" label="New idea" onTap={onRestart} />
         <GlassButton
-          label="Download report"
+          label={saving ? 'Preparing…' : 'Download market analysis'}
           icon="arrow"
-          onTap={() => exportDoc(analysis, weaknesses, analysis.differentiators.filter((_, i) => planned.has(i)))}
+          disabled={saving}
+          onTap={save}
         />
       </div>
     </div>
   )
 }
 
-function CompetitorCard({ competitor: c, open, onToggle }: { competitor: Competitor; open: boolean; onToggle: () => void }) {
+interface CompetitorCardProps {
+  rank: number
+  app: RankedApp
+  explanation?: string
+  reviews: Review[]
+  open: boolean
+  onToggle: () => void
+}
+
+function CompetitorCard({ rank, app, explanation, reviews, open, onToggle }: CompetitorCardProps) {
   return (
     <li className={`card competitor${open ? ' open' : ''}`}>
       <button type="button" className="competitor-head" onClick={onToggle} aria-expanded={open}>
-        <AppIcon name={c.name} url={c.iconUrl} />
+        <AppIcon name={app.AppName} url={app.ArtworkUrl || undefined} />
         <div className="competitor-meta">
-          <strong>{c.name}</strong>
+          <strong>
+            {rank}. {app.AppName}
+          </strong>
           <span className="muted small">
-            {c.developer} · {c.genre}
+            {app.Developer}
+            {app.Genre && ` · ${app.Genre}`}
           </span>
           <span className="small">
-            {c.price === 0 ? 'Free' : `$${c.price.toFixed(2)}`} · ★ {c.rating.toFixed(1)}{' '}
-            <span className="muted">({compact(c.ratingCount)})</span>
+            {app.Price || 'Price unknown'} ·{' '}
+            {app.RatingCount ? (
+              <>
+                ★ {app.Rating.toFixed(1)} <span className="muted">({compact(app.RatingCount)})</span>
+              </>
+            ) : (
+              <span className="muted">No ratings yet</span>
+            )}
           </span>
         </div>
-        <Ring value={c.similarity} />
+        <Ring value={app.similarity_percentage / 100} />
         <span className="chevron" aria-hidden>
           ›
         </span>
@@ -428,33 +599,32 @@ function CompetitorCard({ competitor: c, open, onToggle }: { competitor: Competi
       {open && (
         <div className="competitor-body">
           <div>
-            <h3>Overlaps with you</h3>
-            <div className="chips">
-              {c.overlap.map((o) => (
-                <span key={o} className="chip">{o}</span>
-              ))}
-            </div>
+            <h3>Why it ranks here</h3>
+            <p>{explanation ?? 'No Gemini explanation for this run.'}</p>
           </div>
-          <div className="pros-cons">
-            <div>
-              <h3>Users love</h3>
-              <ul>
-                {c.praises.map((p) => (
-                  <li key={p}>{p}</li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <h3>Users complain</h3>
-              <ul>
-                {c.weaknesses.map((w) => (
-                  <li key={w.issue}>
-                    {w.issue} <span className={`sev ${w.severity}`}>{w.severity}</span>
+          <div>
+            <h3>Recent 1–2★ reviews</h3>
+            {reviews.length ? (
+              <ul className="reviews">
+                {reviews.map((r, i) => (
+                  <li key={i}>
+                    <span className="stars" aria-label={`${r.rating} out of 5 stars`}>
+                      {stars(r.rating)}
+                    </span>{' '}
+                    <strong>{r.title}</strong>
+                    <p className="muted small">{clip(r.text, 220)}</p>
                   </li>
                 ))}
               </ul>
-            </div>
+            ) : (
+              <p className="muted small">No recent 1- or 2-star reviews found.</p>
+            )}
           </div>
+          {app.AppStoreUrl && (
+            <a className="small" href={app.AppStoreUrl} target="_blank" rel="noreferrer">
+              View on the App Store ↗
+            </a>
+          )}
         </div>
       )}
     </li>
@@ -616,74 +786,48 @@ function Ring({ value }: { value: number }) {
   )
 }
 
-function Gauge({ value }: { value: number }) {
-  return (
-    <div className="gauge">
-      <svg viewBox="0 0 120 68" aria-hidden>
-        <path d="M10 60 A50 50 0 0 1 110 60" pathLength={100} className="gauge-track" />
-        <path
-          d="M10 60 A50 50 0 0 1 110 60"
-          pathLength={100}
-          className="gauge-fill"
-          style={{ strokeDasharray: `${value} 100` }}
-        />
-      </svg>
-      <div className="gauge-value">
-        <strong>{value}</strong>
-        <span>{saturationLabel(value)}</span>
-      </div>
-    </div>
-  )
-}
-
 /* ---------------- Helpers ---------------- */
-
-function saturationLabel(v: number) {
-  return v < 35 ? 'Open field' : v < 65 ? 'Competitive' : 'Crowded'
-}
-
-function saturationText(v: number) {
-  if (v < 35) return 'Few direct rivals — room to pioneer.'
-  if (v < 65) return 'Real competition, but clear gaps to exploit.'
-  return 'Crowded market — differentiation is essential.'
-}
 
 function compact(n: number) {
   return Intl.NumberFormat('en', { notation: 'compact' }).format(n)
 }
 
-function escape(s: string) {
-  return s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!)
+// One row per user feature, one cell per ranked app, in ranked order.
+function evidenceGrid(result: AnalysisResult): GridRow[] {
+  if (result.analysis) {
+    return result.analysis.feature_comparison.map((row) => {
+      const byApp = new Map(row.competitors.map((c) => [c.app_index, c]))
+      return {
+        feature: row.feature,
+        cells: result.results.map((_, i) => ({
+          verdict: byApp.get(i)?.verdict ?? 'not_established',
+          evidence: byApp.get(i)?.evidence ?? '',
+        })),
+      }
+    })
+  }
+  return result.feature_matrix.rows.map((row) => ({
+    feature: row.feature,
+    cells: row.cells.map((c) => ({
+      verdict: c.candidate_match ? 'candidate' : 'not_established',
+      evidence: c.candidate_match ? (c.evidence[0]?.passage ?? '') : '',
+    })),
+  }))
 }
 
-// Word opens HTML saved with a .doc extension, so no extra library is needed.
-function exportDoc(a: Analysis, weaknesses: RankedWeakness[], planned: Differentiator[]) {
-  const plan = planned.length ? planned : a.differentiators
-  const html = `<html><head><meta charset="utf-8"><title>Market analysis</title></head><body>
-<h1>Market analysis</h1>
-<p>${escape(a.summary)}</p>
-<p><b>Market saturation:</b> ${a.saturation}/100 (${saturationLabel(a.saturation)})</p>
-<h2>Top competitors</h2>
-<table border="1" cellpadding="6" cellspacing="0">
-<tr><th>App</th><th>Developer</th><th>Price</th><th>Rating</th><th>Similarity</th><th>Overlap</th></tr>
-${a.competitors
-  .map(
-    (c) =>
-      `<tr><td>${escape(c.name)}</td><td>${escape(c.developer)}</td><td>${c.price === 0 ? 'Free' : '$' + c.price.toFixed(2)}</td><td>${c.rating.toFixed(1)}</td><td>${Math.round(c.similarity * 100)}%</td><td>${escape(c.overlap.join(', '))}</td></tr>`,
-  )
-  .join('')}
-</table>
-<h2>How to beat them</h2>
-<ol>${weaknesses.map((w) => `<li><b>${escape(w.issue)}</b> (${escape(w.app)}, ${w.severity}): ${escape(w.howToBeat)}</li>`).join('')}</ol>
-<h2>Differentiation plan</h2>
-<ul>${plan.map((d) => `<li><b>${d.type.toUpperCase()}: ${escape(d.title)}</b> — ${escape(d.detail)}</li>`).join('')}</ul>
-</body></html>`
-  const url = URL.createObjectURL(new Blob([html], { type: 'application/msword' }))
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'market_analysis_document.doc'
-  link.click()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+// Apple formats prices ("Free", "$2.99"); unknown prices sort last.
+function priceValue(price: string) {
+  if (/free/i.test(price)) return 0
+  const n = parseFloat(price.replace(/[^0-9.]/g, ''))
+  return Number.isNaN(n) ? Infinity : n
+}
+
+function stars(rating: number) {
+  return '★'.repeat(rating) + '☆'.repeat(5 - rating)
+}
+
+function clip(text: string, max: number) {
+  return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text
 }
 
 export default App

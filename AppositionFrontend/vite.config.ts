@@ -12,6 +12,8 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/apple-rss/, ''),
       },
+      // C# backend, "http" profile in AppositionBackend/Properties/launchSettings.json
+      '/api': 'http://localhost:5219',
     },
   },
 })

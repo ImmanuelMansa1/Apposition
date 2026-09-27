@@ -4,6 +4,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from generate_market_analysis import report_bytes
 from market_data import load_market_data
 
 
@@ -11,10 +12,8 @@ st.set_page_config(page_title="Market Insights", page_icon="📊", layout="wide"
 st.title("Market Insights")
 st.caption("App Store competitor descriptions, feature evidence, and Gemini analysis")
 
-ROOT = Path(__file__).resolve().parent
-DEFAULT_DIR = ROOT / "AppositionBackend" / "CompetitorAnalysis"
-if not DEFAULT_DIR.is_dir():
-    DEFAULT_DIR = ROOT / "CompetitorAnalysis"
+# local_test.py saves its run files beside this module.
+DEFAULT_DIR = Path(__file__).resolve().parent
 
 with st.sidebar:
     st.header("Run files")
@@ -41,6 +40,13 @@ c.metric("Search term source", data["query_source"].title())
 
 if data["overall_summary"]:
     st.info(data["overall_summary"])
+    # Give the browser the generated document so users can save it locally.
+    st.download_button(
+        "Download market analysis",
+        data=report_bytes(data),
+        file_name="market_analysis.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
 else:
     st.info("Gemini analysis not loaded. Add its JSON file in the sidebar for feature verdicts and recommendations.")
 
@@ -63,7 +69,8 @@ with features:
     if not data["feature_comparison"]:
         st.info("Feature verdicts require the saved Gemini analysis JSON.")
     else:
-        symbols = {"supported": "Supported", "related": "Related", "not_established": "Not established"}
+        symbols = {"supported": "Supported", "related": "Related",
+                   "candidate": "Unverified candidate", "not_established": "Not established"}
         rows = []
         for row in data["feature_comparison"]:
             rows.append({"Your feature": row["feature"], **{

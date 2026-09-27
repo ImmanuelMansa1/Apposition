@@ -6,10 +6,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 
 builder.Services.AddHttpClient<ItunesService>();
-ma
+
 builder.Services.AddHttpClient<PythonService>(client =>
 {
     client.BaseAddress = new Uri("http://localhost:8000");
+    // Embedding, five review feeds and two Gemini calls can outlast the 100 s default.
+    client.Timeout = TimeSpan.FromMinutes(3);
 });
 
 

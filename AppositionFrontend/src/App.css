@@ -728,13 +728,13 @@ button {
   }
 }
 
-.demo-note {
+.notice {
   font-size: 13px;
   text-align: center;
   padding: 6px 12px;
   border-radius: 8px;
   background: var(--code-bg);
-  margin-bottom: -16px;
+  margin-bottom: -24px;
 }
 
 .card {
@@ -782,70 +782,33 @@ button {
   color: var(--text-h);
 }
 
-.gauge-card {
+.stat-card {
   padding: 18px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 4px;
   text-align: center;
 }
 
-.gauge {
-  position: relative;
-  width: 180px;
-}
-
-.gauge svg {
-  display: block;
-  width: 100%;
-  overflow: visible;
-}
-
-.gauge path {
-  fill: none;
-  stroke-width: 12;
-  stroke-linecap: round;
-}
-
-.gauge-track {
-  stroke: var(--border);
-}
-
-.gauge-fill {
-  stroke: var(--accent);
-  animation: gauge-in 1s ease-out both;
-}
-
-@keyframes gauge-in {
-  from {
-    stroke-dasharray: 0 100;
-  }
-}
-
-.gauge-value {
-  position: absolute;
-  inset: auto 0 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  line-height: 1.1;
-}
-
-.gauge-value strong {
-  font-size: 32px;
+.stat-card strong {
+  font-size: 44px;
+  line-height: 1;
   color: var(--text-h);
 }
 
-.gauge-value span {
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.stat-card p {
+  margin-top: 8px;
 }
 
-.gauge-caption {
-  font-size: 14px;
+.section-note {
+  margin: -6px 0 12px;
+}
+
+.empty {
+  padding: 16px;
+  font-size: 15px;
 }
 
 /* sort control */
@@ -1076,6 +1039,125 @@ button {
   font-size: 15px;
 }
 
+.citations {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* competitor reviews */
+.competitor-body h3 {
+  margin: 0 0 6px;
+}
+
+.reviews {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 15px;
+  color: var(--text-h);
+}
+
+.stars {
+  color: var(--sev-medium);
+  letter-spacing: 1px;
+}
+
+/* feature evidence grid */
+.evidence {
+  overflow: hidden;
+}
+
+.evidence-scroll {
+  overflow-x: auto;
+}
+
+.evidence-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.evidence-grid th,
+.evidence-grid td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+  vertical-align: middle;
+}
+
+.evidence-grid thead th {
+  font-weight: 500;
+  color: var(--text-h);
+  min-width: 96px;
+}
+
+.evidence-grid thead th span {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.evidence-grid th[scope='row'],
+.evidence-grid thead th:first-child {
+  /* Stays in view while the app columns scroll on narrow screens */
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--card-bg);
+  text-align: left;
+  min-width: 150px;
+  color: var(--text-h);
+  font-weight: 500;
+}
+
+.evidence-grid .app-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  font-size: 13px;
+  margin: 0 auto;
+}
+
+.verdict {
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 3px 8px;
+  white-space: nowrap;
+  color: var(--text);
+  background: var(--code-bg);
+}
+
+.verdict.supported { color: var(--sev-low); background: color-mix(in srgb, var(--sev-low) 14%, transparent); }
+.verdict.related { color: var(--accent-ink); background: var(--accent-bg); }
+.verdict.candidate { color: var(--sev-medium); background: color-mix(in srgb, var(--sev-medium) 14%, transparent); }
+
+.verdict.on {
+  border-color: currentColor;
+}
+
+.evidence-detail {
+  padding: 14px 16px;
+}
+
+.evidence-detail blockquote {
+  margin: 6px 0 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--accent-border);
+  color: var(--text-h);
+  font-size: 15px;
+}
+
 /* plan */
 .plan-item {
   display: flex;
@@ -1270,6 +1352,11 @@ button {
 
   .competitor-body {
     padding-left: 16px;
+  }
+
+  .evidence-grid th[scope='row'],
+  .evidence-grid thead th:first-child {
+    min-width: 110px;
   }
 }
 

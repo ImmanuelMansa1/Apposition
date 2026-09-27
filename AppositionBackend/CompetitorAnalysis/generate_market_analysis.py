@@ -1,4 +1,5 @@
 import argparse
+from io import BytesIO
 from pathlib import Path
 
 from docx import Document
@@ -9,6 +10,11 @@ from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
 from market_data import load_market_data
+
+
+FONT = "Calibri"
+
+SYMBOLS = {"supported": "S", "related": "R", "candidate": "C", "not_established": "?"}
 
 
 def _soft_borders(table):
@@ -31,27 +37,32 @@ def _soft_borders(table):
         border.set(qn("w:color"), "D9E2F3")
 
 
-def make_report(data, output_path):
-    if not data["overall_summary"]:
-        raise ValueError("Supply Gemini analysis JSON before generating a market report")
+def _bold_header(table):
+    for cell in table.rows[0].cells:
+        for paragraph in cell.paragraphs:
+            for run in paragraph.runs:
+                run.bold = True
 
+
+def build_document(data):
     doc = Document()
     section = doc.sections[0]
     section.top_margin = section.bottom_margin = Inches(0.62)
     section.left_margin = section.right_margin = Inches(0.72)
 
     normal = doc.styles["Normal"]
-    normal.font.name, normal.font.size = "DejaVu Sans", Pt(8.7)
+    normal.font.name, normal.font.size = FONT, Pt(10)
     normal.paragraph_format.space_after = Pt(3)
     normal.paragraph_format.line_spacing = 1.04
-    for style_name, size in (("Title", 17), ("Heading 1", 10.5), ("Heading 2", 9.2)):
+    for style_name, size in (("Title", 20), ("Heading 1", 13), ("Heading 2", 11)):
         style = doc.styles[style_name]
-        style.font.name, style.font.size = "DejaVu Sans", Pt(size)
+        style.font.name, style.font.size = FONT, Pt(size)
         style.font.bold, style.font.color.rgb = True, RGBColor(0, 0, 0)
         style.paragraph_format.space_after = Pt(3)
         # Word's stock Title style may carry a blue bottom rule.
-        for border in style.element.pPr.findall(qn("w:pBdr")):
-            style.element.pPr.remove(border)
+        if style.element.pPr is not None:
+            for border in style.element.pPr.findall(qn("w:pBdr")):
+                style.element.pPr.remove(border)
     example = data.get("example", False)
     doc.core_properties.title = "Market Analysis Example" if example else "Market Analysis"
 
@@ -63,52 +74,116 @@ def make_report(data, output_path):
     if example:
         doc.add_paragraph("Illustrative example. Similarity values and recommendations below are sample data, not results from a live run.")
 
+    doc.add_heading("Your idea", level=1)
+    doc.add_paragraph(idea.get("Description", ""))
+    if idea.get("Features"):
+        doc.add_paragraph("Features: " + "; ".join(idea["Features"]))
+    if idea.get("Target_Audience"):
+        doc.add_paragraph(f"Target audience: {idea['Target_Audience']}")
+
     doc.add_heading("Overview", level=1)
-    doc.add_paragraph(data["overall_summary"])
+    doc.add_paragraph(
+        data["overall_summary"]
+        or "Gemini analysis was unavailable for this run. The ranking and feature "
+           "candidates below come from sentence embeddings only and are unverified."
+    )
 
     doc.add_heading("Closest competitors", level=1)
-    table = doc.add_table(rows=1, cols=4)
+    table = doc.add_table(rows=1, cols=5)
     table.style = "Table Grid"
     _soft_borders(table)
-    for cell, name in zip(table.rows[0].cells, ("No.", "Application", "Similarity index", "Price")):
+    for cell, name in zip(table.rows[0].cells,
+                          ("No.", "Application", "Developer", "Similarity index", "Price")):
         cell.text = name
     for index, app in enumerate(data["apps"], 1):
         cells = table.add_row().cells
-        for cell, value in zip(cells, (str(index), app["name"],
+        for cell, value in zip(cells, (str(index), app["name"], app["developer"],
                                        f"{app['index']:.1f} / 100", app["price"])):
             cell.text = value
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-    for cell in table.rows[0].cells:
-        for paragraph in cell.paragraphs:
-            for run in paragraph.runs:
-                run.bold = True
-    for i, app in enumerate(data["apps"][:2]):
+    _bold_header(table)
+    doc.add_paragraph("Similarity indices rank listing text; they are not percentages of shared features.")
+    for i, app in enumerate(data["apps"]):
         explanation = data["competitor_summaries"].get(i)
         if explanation:
             paragraph = doc.add_paragraph(style="Normal")
             paragraph.add_run(f"{i + 1}. {app['name']}: ").bold = True
-            paragraph.add_run(explanation[:130])
+            paragraph.add_run(explanation)
 
     if data["feature_comparison"]:
         doc.add_heading("Feature comparison", level=1)
-        doc.add_paragraph("S = described in listing   R = related capability   ? = not established by listing")
+        doc.add_paragraph("S = described in listing   R = related capability   "
+                          "C = unverified embedding candidate   ? = not established by listing")
         grid = doc.add_table(rows=1, cols=1 + len(data["apps"]))
         grid.style = "Table Grid"
         _soft_borders(grid)
         for cell, value in zip(grid.rows[0].cells,
                                ["Your feature"] + [str(i) for i in range(1, len(data["apps"]) + 1)]):
             cell.text = value
-        symbols = {"supported": "S", "related": "R", "not_established": "?"}
         for row in data["feature_comparison"][:8]:
             cells = grid.add_row().cells
             cells[0].text = row["feature"][:72]
             for index in range(len(data["apps"])):
-                cells[index + 1].text = symbols[row["cells"][index]["verdict"]]
+                cells[index + 1].text = SYMBOLS[row["cells"][index]["verdict"]]
                 for paragraph in cells[index + 1].paragraphs:
                     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        _bold_header(grid)
         doc.add_paragraph("The numbers correspond to the competitors listed above.")
 
-    doc.add_heading("Ways to differentiate", level=1)
-    for item in data["differentiation"][:3]:
-        doc.add_heading(item["idea"].strip(), level=2)
-        doc.add_paragraph(item["rationale"].strip()[:240])
+        doc.add_heading("Listing evidence", level=2)
+        for row in data["feature_comparison"][:8]:
+            for index, cell in enumerate(row["cells"]):
+                if cell["evidence"]:
+                    paragraph = doc.add_paragraph(style="Normal")
+                    paragraph.add_run(f"{row['feature']} · {data['apps'][index]['name']}: ").bold = True
+                    paragraph.add_run(f"“{cell['evidence']}”").italic = True
+
+    if data["differentiation"]:
+        doc.add_heading("Ways to differentiate", level=1)
+        for item in data["differentiation"]:
+            doc.add_heading(item["idea"].strip(), level=2)
+            doc.add_paragraph(item["rationale"].strip())
+
+    doc.add_heading("Improvements from negative reviews", level=1)
+    if data["review_improvements"]:
+        for item in data["review_improvements"]:
+            doc.add_heading(item["complaint"].strip(), level=2)
+            doc.add_paragraph(item["recommendation"].strip())
+            for ref in item["review_refs"]:
+                # Gemini's references were validated against these same review lists.
+                groups = data["reviews"]
+                reviews = groups[ref["app_index"]]["reviews"] if ref["app_index"] < len(groups) else []
+                if ref["review_index"] < len(reviews):
+                    review = reviews[ref["review_index"]]
+                    paragraph = doc.add_paragraph(style="Normal")
+                    paragraph.add_run(f"{data['apps'][ref['app_index']]['name']}, {review['rating']}★: ").bold = True
+                    paragraph.add_run(f"“{review['title']}” {review['text'][:300]}").italic = True
+    else:
+        doc.add_paragraph("No review-backed improvements for this run. Reviews may have been "
+                          "unavailable, or the recent 1- and 2-star reviews held no actionable complaint.")
+
+    return doc
+
+
+def make_report(data, output_path):
+    output_path = Path(output_path)
+    build_document(data).save(output_path)
+    return output_path
+
+
+def report_bytes(data):
+    # For HTTP responses: the browser saves the file, not the server.
+    buffer = BytesIO()
+    build_document(data).save(buffer)
+    return buffer.getvalue()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Write a market analysis .docx from a saved run.")
+    parser.add_argument("engine", help="itunes_test_results.json or a saved /similarity response")
+    parser.add_argument("--gemini", help="Saved analyze_competitors() JSON")
+    parser.add_argument("--reviews", help="Saved recent_negative_reviews() JSON")
+    parser.add_argument("--out", default="market_analysis.docx")
+    args = parser.parse_args()
+    path = make_report(load_market_data(args.engine, args.gemini, args.reviews), args.out)
+    print(f"Saved {path}")

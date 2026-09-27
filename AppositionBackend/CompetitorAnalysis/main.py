@@ -27,7 +27,14 @@ def parse_itunes_data(source):
             "AppName": app.get("trackName", ""),
             "Developer": app.get("artistName", ""),
             "Price": app.get("formattedPrice", ""),
-            "Description": app.get("description", "")})
+            "Description": app.get("description", ""),
+            # Not embedded; carried through so reviews and the UI need no second lookup.
+            "TrackId": app.get("trackId"),
+            "Genre": app.get("primaryGenreName", ""),
+            "Rating": app.get("averageUserRating") or 0,
+            "RatingCount": app.get("userRatingCount") or 0,
+            "AppStoreUrl": app.get("trackViewUrl", ""),
+            "ArtworkUrl": app.get("artworkUrl100", "")})
     return {"apps": apps}
 
 
@@ -47,10 +54,12 @@ def embed_competitor_apps(parsed_data):
 def cosine_similarity_score(user_input, parsed_data):
     # We turn the user's input into a vector so
     # Include the name and description, just as we did for each competitor.
+    # Features go in too, since listings describe what an app does.
     user_text = ". ".join(
     part for part in (
         user_input.get("AppName", ""),
-        user_input.get("Description", ""))
+        user_input.get("Description", ""),
+        ", ".join(user_input.get("Features", [])))
     if part
 )
     user_embedding = model.encode(user_text, convert_to_tensor=True)

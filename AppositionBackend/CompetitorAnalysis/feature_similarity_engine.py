@@ -7,10 +7,6 @@
 
 import re
 from sentence_transformers import util
-from embedding import collect_user_idea
-
-import re
-from sentence_transformers import util
 
 
 def split_description(description):

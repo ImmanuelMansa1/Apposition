@@ -1,44 +1,100 @@
+// Shapes returned by POST /api/analysis. Field names follow the Python
+// pipeline (AppositionBackend/CompetitorAnalysis/api.py) unchanged.
+
+/** The pitch split into fields by Gemini. */
 export interface Brief {
-  idea: string
-  features: string[]
-  audience: string
+  appName: string
+  appIdea: string
+  keyFeatures: string[]
+  targetAudience: string
+  /** True when the pitch named none and Gemini derived them */
+  featuresInferred: boolean
+  audienceInferred: boolean
+  status: 'available' | 'unavailable'
 }
 
-export type Severity = 'high' | 'medium' | 'low'
-
-export interface Weakness {
-  issue: string
-  mentions: number
-  severity: Severity
-  howToBeat: string
+export interface Evidence {
+  passage: string
+  cosine_score: number
 }
 
-export interface Competitor {
-  id: string
-  name: string
-  developer: string
-  genre: string
-  price: number
+export interface RankedApp {
+  AppName: string
+  Developer: string
+  /** As Apple formats it, e.g. "Free" or "$2.99" */
+  Price: string
+  Description: string
+  TrackId: number | null
+  Genre: string
+  Rating: number
+  RatingCount: number
+  AppStoreUrl: string
+  ArtworkUrl: string
+  /** Raw cosine similarity, roughly -1 to 1 */
+  similarity_score: number
+  /** Cosine clamped to 0–100 for display */
+  similarity_percentage: number
+}
+
+export interface MatrixCell {
+  app_index: number
+  app_name: string
+  highest_score: number | null
+  /** Embedding hint only; Gemini verifies it */
+  candidate_match: boolean
+  evidence: Evidence[]
+}
+
+export interface FeatureMatrix {
+  competitors: string[]
+  rows: { feature: string; cells: MatrixCell[]; candidate_count: number }[]
+  candidate_threshold?: number
+}
+
+export interface Review {
   rating: number
-  ratingCount: number
-  iconUrl?: string
-  /** Cosine similarity to the idea, 0–1 */
-  similarity: number
-  overlap: string[]
-  praises: string[]
-  weaknesses: Weakness[]
-}
-
-export interface Differentiator {
-  type: 'add' | 'change' | 'remove'
   title: string
-  detail: string
+  text: string
+  updated: string
 }
 
-export interface Analysis {
-  summary: string
-  /** How crowded the market is, 0–100 */
-  saturation: number
-  competitors: Competitor[]
-  differentiators: Differentiator[]
+export interface ReviewGroup {
+  AppName: string
+  reviews: Review[]
+  error?: string
+}
+
+export type Verdict = 'supported' | 'related' | 'not_established'
+
+export interface GeminiAnalysis {
+  overall_summary: string
+  competitor_summaries: { app_index: number; explanation: string }[]
+  feature_comparison: {
+    feature: string
+    competitors: { app_index: number; verdict: Verdict; evidence: string }[]
+  }[]
+  differentiation: { idea: string; rationale: string; supporting_app_indices: number[] }[]
+  review_improvements: {
+    complaint: string
+    recommendation: string
+    review_refs: { app_index: number; review_index: number }[]
+  }[]
+}
+
+export interface AnalysisResult {
+  idea: { AppName: string; Description: string; Features: string[]; Target_Audience: string }
+  /** The five closest listings, most similar first; app_index points here */
+  results: RankedApp[]
+  candidate_count: number
+  returned_count: number
+  feature_matrix: FeatureMatrix
+  reviews: { apps: ReviewGroup[] }
+  review_status: 'available' | 'partial' | 'no_competitors'
+  analysis: GeminiAnalysis | null
+  analysis_status: 'available' | 'unavailable' | 'no_competitors'
+}
+
+export interface AnalysisResponse {
+  brief: Brief
+  result: AnalysisResult
 }

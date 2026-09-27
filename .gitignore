@@ -101,3 +101,8 @@ coverage/
 .next
 out/
 
+
+# Python
+__pycache__/
+*.pyc
+.venv/
