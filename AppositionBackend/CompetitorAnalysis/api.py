@@ -26,6 +26,7 @@ from gemini_api import (
     MAX_IDEA_CHARS,
     analyze_competitors,
     extract_brief,
+    gemini_failure_reason,
 )
 from generate_market_analysis import report_bytes
 from revenue import estimate_revenue
@@ -83,11 +84,13 @@ def health():
 @app.post("/extract")
 def extract(request: ExtractRequest):
     # Gemini splits the one-message pitch into idea, features and audience.
+    reason = None
     try:
         brief = extract_brief(request.prompt)
         status = "available"
-    except Exception:
+    except Exception as error:
         logger.exception("Brief extraction failed")
+        reason = gemini_failure_reason(error)
         # Still rank on the raw pitch; the evidence grid will just be empty.
         brief = {
             "AppName": "",
@@ -109,6 +112,8 @@ def extract(request: ExtractRequest):
         "audienceInferred": brief["audience_inferred"],
         "suggestedFeatures": brief["suggested_features"],
         "status": status,
+        # Why Gemini failed (missing_key, invalid_key, quota, unavailable, error), else None.
+        "reason": reason,
     }
 
 
@@ -202,14 +207,16 @@ def similarity(request: SimilarityRequest):
     # Gemini explains existing scores and evidence; it does not set scores.
     analysis = None
     analysis_status = "available"
+    analysis_reason = None
 
     try:
         analysis = analyze_competitors(
             user_input, top_five, feature_matrix, reviews
         )
-    except Exception:
+    except Exception as error:
         logger.exception("Gemini analysis failed")
         analysis_status = "unavailable"
+        analysis_reason = gemini_failure_reason(error)
 
     # Estimated from public store signals; a range, never a reported figure.
     try:
@@ -238,6 +245,7 @@ def similarity(request: SimilarityRequest):
         ),
         "analysis": analysis,
         "analysis_status": analysis_status,
+        "analysis_reason": analysis_reason,
         # Same order as results.
         "revenue": revenue,
         "revenue_status": revenue_status,

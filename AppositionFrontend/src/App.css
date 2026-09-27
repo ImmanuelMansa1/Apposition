@@ -791,6 +791,16 @@ button {
   color: var(--text-h);
 }
 
+.gemini-notice {
+  text-align: left;
+  line-height: 1.5;
+  padding: 10px 14px;
+  margin-bottom: 0;
+  color: var(--text-h);
+  background: color-mix(in srgb, var(--sev-medium) 12%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--sev-medium) 40%, transparent);
+}
+
 .stat-card {
   padding: 18px;
   display: flex;

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import type { SubmitEvent, KeyboardEvent } from 'react'
+import type { SubmitEvent, KeyboardEvent, ReactNode } from 'react'
 import { analyzeIdea, downloadReport, extractBrief } from './api'
 import LiquidGlassButton from './LiquidGlassButton'
 import type { LiquidGlassButtonProps } from './LiquidGlassButton'
@@ -9,7 +9,7 @@ import Showcase from './Showcase'
 import Starfield from './Starfield'
 import { scrollToTop, startSmoothScroll } from './SmoothScroll'
 import TopApps from './TopApps'
-import type { AnalysisResponse, AnalysisResult, Brief, RankedApp, RevenueEstimate, Review, Verdict } from './types'
+import type { AnalysisResponse, AnalysisResult, Brief, GeminiReason, RankedApp, RevenueEstimate, Review, Verdict } from './types'
 import './App.css'
 
 type View = 'input' | 'extracting' | 'features' | 'loading' | 'results'
@@ -330,7 +330,7 @@ function FeatureEditor({ brief, features, setFeatures, error, onBack, onAnalyze 
           </p>
         )}
         {brief.status === 'unavailable' && (
-          <p className="notice">Gemini couldn't read the pitch, so add your features yourself.</p>
+          <GeminiNotice reason={brief.reason}>Add your features below to continue.</GeminiNotice>
         )}
         <p className="muted small">
           Each feature is checked against competitor listings. Remove any that don't fit and add what's missing.
@@ -569,11 +569,11 @@ function Results({ analysis: { brief, result }, onRestart }: ResultsProps) {
 
   return (
     <div className="results">
-      {brief.status === 'unavailable' && (
-        <p className="notice">Gemini couldn't read the pitch, so no features were extracted. Ranking used your text as written.</p>
-      )}
       {result.analysis_status === 'unavailable' && (
-        <p className="notice">Gemini analysis is unavailable for this run. Feature cells show unverified embedding matches.</p>
+        <GeminiNotice reason={result.analysis_reason ?? brief.reason}>
+          Rankings, feature evidence, reviews and revenue below are still live. Only the AI summaries and suggestions
+          are missing, and feature cells show unverified matches.
+        </GeminiNotice>
       )}
       {result.review_status === 'partial' && <p className="notice">Reviews could not be loaded for some apps.</p>}
       {result.review_status === 'unavailable' && (
@@ -901,6 +901,25 @@ function CompetitorCard({ rank, app, explanation, reviews, revenue, revenueScale
         </div>
       )}
     </li>
+  )
+}
+
+/* ---------------- Gemini problems ---------------- */
+
+// Say plainly when the AI provider or its key is the problem, so it isn't mistaken for an app bug.
+const GEMINI_PROBLEM: Record<GeminiReason, string> = {
+  invalid_key: 'Google rejected the Gemini API key on this server (it has expired or is invalid). This is a key problem, not an app error.',
+  quota: "The Gemini API key on this server has reached Google's usage limit for now. This is a quota limit, not an app error.",
+  unavailable: "Google's Gemini service is overloaded right now. This is on Google's side; try again in a few minutes.",
+  missing_key: 'No Gemini API key is set up on this server, so the AI features are turned off.',
+  error: "Gemini's answer couldn't be used this time.",
+}
+
+function GeminiNotice({ reason, children }: { reason?: GeminiReason | null; children: ReactNode }) {
+  return (
+    <div className="notice gemini-notice" role="status">
+      <strong>AI features unavailable.</strong> {GEMINI_PROBLEM[reason ?? 'error']} {children}
+    </div>
   )
 }
 

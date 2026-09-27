@@ -181,6 +181,28 @@ def _quote_in_review(ref, expected_apps, review_groups):
     return review.get("rating") in (1, 2) and bool(quote) and quote in source
 
 
+def gemini_failure_reason(error):
+    """Why a Gemini call failed, so the UI can say it's the key or Google, not the app.
+
+    missing_key: no GEMINI_KEY configured on this server
+    invalid_key: Google rejected the key (expired, revoked or wrong)
+    quota:       the key hit its usage limit on every model we tried
+    unavailable: Google's service is overloaded or down
+    error:       anything else (e.g. an answer that failed our checks)
+    """
+    if isinstance(error, RuntimeError) and "GEMINI_KEY" in str(error):
+        return "missing_key"
+    if isinstance(error, errors.ClientError):
+        message = (error.message or "").lower()
+        if error.code in (401, 403) or (error.code == 400 and "api key" in message):
+            return "invalid_key"
+        if error.code == 429:
+            return "quota"
+    if isinstance(error, errors.ServerError):
+        return "unavailable"
+    return "error"
+
+
 def _dedupe(phrases):
     # Blank or repeated phrases would duplicate rows in the evidence grid.
     unique = {}

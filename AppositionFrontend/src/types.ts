@@ -1,6 +1,9 @@
 // Shapes returned by POST /api/analysis. Field names follow the Python
 // pipeline (AppositionBackend/CompetitorAnalysis/api.py) unchanged.
 
+/** Why a Gemini call failed; null or absent when it worked. */
+export type GeminiReason = 'missing_key' | 'invalid_key' | 'quota' | 'unavailable' | 'error'
+
 /** The pitch split into fields by Gemini. */
 export interface Brief {
   appName: string
@@ -13,6 +16,7 @@ export interface Brief {
   /** Other features apps like this often have; only analysed if the founder adds them */
   suggestedFeatures: string[]
   status: 'available' | 'unavailable'
+  reason?: GeminiReason | null
 }
 
 export interface Evidence {
@@ -114,6 +118,7 @@ export interface AnalysisResult {
   review_status: 'available' | 'partial' | 'unavailable' | 'no_competitors'
   analysis: GeminiAnalysis | null
   analysis_status: 'available' | 'unavailable' | 'no_competitors'
+  analysis_reason?: GeminiReason | null
   /** Same order as results */
   revenue?: RevenueEstimate[]
   revenue_status?: 'available' | 'unavailable' | 'no_competitors'

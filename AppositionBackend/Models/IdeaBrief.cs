@@ -21,4 +21,7 @@ public class IdeaBrief
 
     // "available", or "unavailable" when Gemini failed and the raw pitch is used.
     public string Status { get; set; } = string.Empty;
+
+    // Why Gemini failed: missing_key, invalid_key, quota, unavailable or error.
+    public string? Reason { get; set; }
 }
