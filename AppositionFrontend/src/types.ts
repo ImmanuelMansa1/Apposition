@@ -32,8 +32,10 @@ export interface RankedApp {
   ArtworkUrl: string
   /** Raw cosine similarity, roughly -1 to 1 */
   similarity_score: number
-  /** Cosine clamped to 0–100 for display */
+  /** Cosine clamped to a 0–100 similarity index; not a probability or feature share */
   similarity_percentage: number
+  /** What the two scores measure, supplied by the ranking engine */
+  score_basis: string
 }
 
 export interface MatrixCell {
@@ -77,7 +79,8 @@ export interface GeminiAnalysis {
   review_improvements: {
     complaint: string
     recommendation: string
-    review_refs: { app_index: number; review_index: number }[]
+    /** quote is checked word for word against the cited review */
+    review_refs: { app_index: number; review_index: number; quote: string }[]
   }[]
 }
 
@@ -89,7 +92,7 @@ export interface AnalysisResult {
   returned_count: number
   feature_matrix: FeatureMatrix
   reviews: { apps: ReviewGroup[] }
-  review_status: 'available' | 'partial' | 'no_competitors'
+  review_status: 'available' | 'partial' | 'unavailable' | 'no_competitors'
   analysis: GeminiAnalysis | null
   analysis_status: 'available' | 'unavailable' | 'no_competitors'
 }

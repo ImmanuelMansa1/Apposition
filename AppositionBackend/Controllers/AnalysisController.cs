@@ -31,8 +31,9 @@ public class AnalysisController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Prompt))
             return BadRequest("Describe your app idea.");
 
-        if (request.Prompt.Length > 2000)
-            return BadRequest("Keep the idea under 2,000 characters.");
+        if (request.Prompt.Length > IdeaPrompt.MaxLength)
+            return BadRequest(
+                $"Keep the idea to {IdeaPrompt.MaxLength:N0} characters (it is {request.Prompt.Length:N0}).");
 
         try
         {

@@ -17,7 +17,7 @@ from main import (
 )
 from feature_similarity_engine import build_feature_matrix, attach_feature_matches
 from filter_reviews import recent_negative_reviews
-from gemini_api import analyze_competitors, extract_brief
+from gemini_api import MAX_IDEA_CHARS, analyze_competitors, extract_brief
 from generate_market_analysis import report_bytes
 from market_data import market_data_from_result
 
@@ -42,11 +42,11 @@ class Candidate(BaseModel):
 
 
 class ExtractRequest(BaseModel):
-    prompt: str = Field(min_length=1, max_length=2000)
+    prompt: str = Field(min_length=1, max_length=MAX_IDEA_CHARS)
 
 
 class SimilarityRequest(BaseModel):
-    appIdea: str = Field(min_length=1, max_length=2000)
+    appIdea: str = Field(min_length=1, max_length=MAX_IDEA_CHARS)
     appName: str = ""
     keyFeatures: list[str] = Field(default_factory=list)
     targetAudience: str = ""
@@ -191,8 +191,12 @@ def similarity(request: SimilarityRequest):
         "returned_count": len(top_five["apps"]),
         "feature_matrix": feature_matrix,
         "reviews": reviews,
+        # "unavailable" means no feed loaded at all, so an empty
+        # recommendations list is not mistaken for "no complaints".
         "review_status": (
-            "partial"
+            "unavailable"
+            if all(group.get("error") for group in reviews["apps"])
+            else "partial"
             if any(group.get("error") for group in reviews["apps"])
             else "available"
         ),

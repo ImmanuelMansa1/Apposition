@@ -582,6 +582,15 @@ button {
   font-size: 14px;
 }
 
+.char-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.char-count.over {
+  color: var(--sev-high);
+  font-weight: 600;
+}
+
 .error {
   color: var(--sev-high);
   font-size: 15px;

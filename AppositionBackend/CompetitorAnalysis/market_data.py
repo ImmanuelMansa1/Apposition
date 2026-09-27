@@ -63,7 +63,7 @@ def _build(idea, apps, candidate_count, analysis, reviews, feature_matrix,
                 "index": float(app.get("similarity_percentage", 0)),
                 "price": app.get("Price") or "Unknown",
                 "developer": app.get("Developer", ""),
-                "score_basis": "Cosine similarity of the idea and the full App Store description",
+                "score_basis": app.get("score_basis", "Cosine similarity of the idea and the App Store listing"),
             }
             for app in apps
         ],

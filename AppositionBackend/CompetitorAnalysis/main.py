@@ -11,6 +11,11 @@ from feature_similarity_engine import build_feature_matrix, attach_feature_match
 
 model = st("all-MiniLM-L6-v2")
 
+SCORE_BASIS = ("Cosine similarity between all-MiniLM-L6-v2 embeddings of the idea "
+               "(name, description, features) and the listing (name, description). "
+               "similarity_percentage is that cosine clamped to a 0-100 similarity index, "
+               "not a probability or a percent of shared features.")
+
 
 # We are using a dictionary to store the cleaned app information. Potentially, later we could use an OpenAI API create a similar dictionary on the user input side for more accurate scoring
 # If we have time, we'll do this
@@ -73,6 +78,8 @@ def cosine_similarity_score(user_input, parsed_data):
 
         # Scale that score to a number from 0 to 100 for display.
         app["similarity_percentage"] = round(max(0, min(1, score)) * 100, 1)
+        # Say what the numbers measure so no one reads them as feature overlap.
+        app["score_basis"] = SCORE_BASIS
 
         # Remove the vector because it cannot go into the JSON response.
         del app["embedding"]

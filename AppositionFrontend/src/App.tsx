@@ -165,9 +165,12 @@ interface BriefFormProps {
 }
 
 const MAX_PROMPT_PX = 220
+// Matches IdeaPrompt.MaxLength (C#) and MAX_IDEA_CHARS (Python).
+const MAX_IDEA_CHARS = 1000
 
 function BriefForm({ prompt, setPrompt, onSubmit, error, introDone }: BriefFormProps) {
-  const ready = prompt.trim().length > 0
+  const tooLong = prompt.length > MAX_IDEA_CHARS
+  const ready = prompt.trim().length > 0 && !tooLong
 
   // Grow with the text like a chat composer, up to a cap, then scroll.
   const autosize = (el: HTMLTextAreaElement | null) => {
@@ -199,7 +202,6 @@ function BriefForm({ prompt, setPrompt, onSubmit, error, introDone }: BriefFormP
           autoFocus
           rows={1}
           value={prompt}
-          maxLength={2000}
           onChange={(e) => {
             setPrompt(e.target.value)
             autosize(e.target)
@@ -207,6 +209,8 @@ function BriefForm({ prompt, setPrompt, onSubmit, error, introDone }: BriefFormP
           onKeyDown={onKey}
           placeholder="I have an idea for an app that…"
           aria-label="Describe your app idea"
+          aria-describedby="idea-count"
+          aria-invalid={tooLong || undefined}
         />
         <button type="submit" className="composer-send" disabled={!ready} aria-label="Find my competitors">
           <svg viewBox="0 0 24 24" aria-hidden>
@@ -214,7 +218,18 @@ function BriefForm({ prompt, setPrompt, onSubmit, error, introDone }: BriefFormP
           </svg>
         </button>
       </div>
-      <p className="composer-hint">Mention key features and who it's for to sharpen the results.</p>
+      <p className="composer-hint">
+        Mention key features and who it's for to sharpen the results.{' '}
+        <span id="idea-count" className={`char-count${tooLong ? ' over' : ''}`} aria-live="polite">
+          {prompt.length.toLocaleString()}/{MAX_IDEA_CHARS.toLocaleString()}
+        </span>
+      </p>
+      {tooLong && (
+        <p className="error">
+          Your idea is {(prompt.length - MAX_IDEA_CHARS).toLocaleString()} characters over the limit. Shorten it to
+          analyze.
+        </p>
+      )}
 
       {error && <p className="error">{error}</p>}
 
@@ -346,6 +361,9 @@ function Results({ analysis: { brief, result }, onRestart }: ResultsProps) {
         <p className="notice">Gemini analysis is unavailable for this run. Feature cells show unverified embedding matches.</p>
       )}
       {result.review_status === 'partial' && <p className="notice">Reviews could not be loaded for some apps.</p>}
+      {result.review_status === 'unavailable' && (
+        <p className="notice">Competitor reviews could not be loaded, so there are no review-backed recommendations.</p>
+      )}
 
       <section className="overview">
         <div className="card idea-card">
@@ -370,7 +388,7 @@ function Results({ analysis: { brief, result }, onRestart }: ResultsProps) {
           <strong>{apps.length}</strong>
           <span>closest of {result.candidate_count} App Store listings</span>
           <p className="muted small">
-            Top match: {apps[0].AppName}, {Math.round(apps[0].similarity_percentage)}% similar
+            Top match: {apps[0].AppName}, similarity index {Math.round(apps[0].similarity_percentage)}/100
           </p>
         </div>
       </section>
@@ -387,7 +405,8 @@ function Results({ analysis: { brief, result }, onRestart }: ResultsProps) {
           </div>
         </div>
         <p className="muted small section-note">
-          Similarity compares your idea with each full listing. It isn't a share of matching features.
+          The similarity index (0–100) compares your idea with each full listing using sentence embeddings. It
+          isn't a probability or a share of matching features.
         </p>
         <ul className="competitors">
           {order.map((i) => (
@@ -491,7 +510,7 @@ function Results({ analysis: { brief, result }, onRestart }: ResultsProps) {
                             <span className="muted">
                               {apps[ref.app_index]?.AppName} · {stars(review.rating)}
                             </span>{' '}
-                            “{review.title}”
+                            “{ref.quote || review.title}”
                           </li>
                         )
                       )
@@ -501,6 +520,8 @@ function Results({ analysis: { brief, result }, onRestart }: ResultsProps) {
               </li>
             ))}
           </ol>
+        ) : result.review_status === 'unavailable' ? (
+          <p className="card empty">Review feeds were unavailable for this run.</p>
         ) : (
           <p className="card empty">
             No review-backed recommendations this time. Reviews may not have loaded, or the recent ones named no
@@ -591,7 +612,7 @@ function CompetitorCard({ rank, app, explanation, reviews, open, onToggle }: Com
             )}
           </span>
         </div>
-        <Ring value={app.similarity_percentage / 100} />
+        <Ring value={app.similarity_percentage / 100} basis={app.score_basis} />
         <span className="chevron" aria-hidden>
           ›
         </span>
@@ -764,12 +785,12 @@ function AppIcon({ name, url }: { name: string; url?: string }) {
   )
 }
 
-function Ring({ value }: { value: number }) {
+function Ring({ value, basis }: { value: number; basis: string }) {
   const r = 22
   const c = 2 * Math.PI * r
   const pct = Math.round(value * 100)
   return (
-    <div className="ring" title={`${pct}% similar`}>
+    <div className="ring" title={`Similarity index ${pct}/100. ${basis}`}>
       <svg viewBox="0 0 52 52" aria-hidden>
         <circle cx="26" cy="26" r={r} className="ring-track" />
         <circle
@@ -781,7 +802,7 @@ function Ring({ value }: { value: number }) {
           style={{ strokeDashoffset: c * (1 - value), ['--c' as string]: c }}
         />
       </svg>
-      <span>{pct}%</span>
+      <span>{pct}</span>
     </div>
   )
 }

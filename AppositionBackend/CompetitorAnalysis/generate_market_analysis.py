@@ -157,10 +157,14 @@ def build_document(data):
                     review = reviews[ref["review_index"]]
                     paragraph = doc.add_paragraph(style="Normal")
                     paragraph.add_run(f"{data['apps'][ref['app_index']]['name']}, {review['rating']}★: ").bold = True
-                    paragraph.add_run(f"“{review['title']}” {review['text'][:300]}").italic = True
+                    # The quote was checked word for word against this review.
+                    paragraph.add_run(f"“{ref.get('quote') or review['title']}”").italic = True
+    elif data["review_status"] == "unavailable":
+        doc.add_paragraph("Competitor review feeds could not be loaded for this run, so no "
+                          "review-backed improvements are given.")
     else:
-        doc.add_paragraph("No review-backed improvements for this run. Reviews may have been "
-                          "unavailable, or the recent 1- and 2-star reviews held no actionable complaint.")
+        doc.add_paragraph("No review-backed improvements for this run. The recent 1- and 2-star "
+                          "reviews held no complaint Gemini could cite word for word.")
 
     return doc
 
