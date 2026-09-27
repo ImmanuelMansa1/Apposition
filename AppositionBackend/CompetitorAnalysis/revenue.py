@@ -59,6 +59,24 @@ def _listing(track_id, country):
         return None
 
 
+def _sells_in_app(track_id):
+    """True/False from the App Store page's "In-App Purchases" field; None if unreadable.
+
+    The lookup API doesn't expose this, so read the product page. A rate-limited or
+    failed page returns None, and the app keeps its normal estimate rather than being
+    wrongly shown as earning nothing.
+    """
+    try:
+        request = urllib.request.Request(
+            f"https://apps.apple.com/us/app/id{track_id}",
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 Safari/605.1.15"})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            page = response.read().decode("utf-8", "ignore")
+    except Exception:
+        return None
+    return '"title":"In-App Purchases","summary":"Yes"' in page
+
+
 def _genre_to_overall(charts, genre):
     """How many overall ranks one category rank is worth, for each country.
 
@@ -127,6 +145,7 @@ def estimate_revenue(apps):
     wanted = {(c, None) for c in CHART_COUNTRIES} | {(c, g) for g in set(genres.values()) if g for c in CHART_COUNTRIES}
     with ThreadPoolExecutor(16) as pool:
         charts = dict(zip(wanted, pool.map(lambda key: _chart(*key), wanted)))
+        sells = dict(zip(ids, pool.map(_sells_in_app, ids)))
 
     results = []
     for app, track_id in zip(apps, ids):
@@ -135,6 +154,12 @@ def estimate_revenue(apps):
             results.append({"status": "unavailable"})
             continue
         ratings = sum(l.get("userRatingCount", 0) for l in found)
+        paid = bool(found[0].get("price"))
+        if not paid and sells.get(track_id) is False:
+            # Free with nothing to buy: no App Store revenue (it may still earn from ads).
+            results.append({"status": "no_store_revenue", "ratings": ratings, "paid_app": False,
+                            "basis": "free, no in-app purchases"})
+            continue
         genre = genres[track_id]
         signal, positions = _chart_signal(track_id, genre, charts, MODEL["chart_slope"])
         in_overall = any(p.split()[1] == "top-grossing" for p in positions)
@@ -158,6 +183,6 @@ def estimate_revenue(apps):
             "basis": "top-grossing charts and ratings" if signal > 0 else "ratings only",
             "chart_positions": positions,
             "ratings": ratings,
-            "paid_app": bool(found[0].get("price")),
+            "paid_app": paid,
         })
     return results

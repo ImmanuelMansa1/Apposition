@@ -68,7 +68,7 @@ def feature_ranking(feature_comparison):
 
 
 def _build(idea, apps, candidate_count, analysis, reviews, feature_matrix,
-           query_source, review_status, planned=()):
+           query_source, review_status, planned=(), revenue=None):
     analysis = analysis or {}
     comparison = _feature_comparison(analysis, feature_matrix, len(apps))
     differentiation = analysis.get("differentiation", [])
@@ -88,8 +88,10 @@ def _build(idea, apps, candidate_count, analysis, reviews, feature_matrix,
                 "rating": float(app.get("Rating") or 0),
                 "rating_count": int(app.get("RatingCount") or 0),
                 "score_basis": app.get("score_basis", "Cosine similarity of the idea and the App Store listing"),
+                # Estimated from store signals (revenue.py); None when not estimated.
+                "revenue": revenue[i] if revenue and i < len(revenue) else None,
             }
-            for app in apps
+            for i, app in enumerate(apps)
         ],
         "candidate_count": candidate_count,
         "query_source": query_source,
@@ -120,6 +122,7 @@ def market_data_from_result(result, planned=()):
         query_source=result.get("query_source", "gemini"),
         review_status=result.get("review_status", "unknown"),
         planned=planned,
+        revenue=result.get("revenue"),
     )
 
 

@@ -9,7 +9,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
-from charts import feature_coverage_chart, market_position_chart, similarity_chart
+from charts import feature_coverage_chart, market_position_chart, revenue_chart, similarity_chart
 from market_data import load_market_data
 
 
@@ -43,6 +43,13 @@ def _bold_header(table):
         for paragraph in cell.paragraphs:
             for run in paragraph.runs:
                 run.bold = True
+
+
+def _money(value):
+    for size, suffix in ((1e9, "B"), (1e6, "M"), (1e3, "K")):
+        if value >= size:
+            return "$" + f"{value / size:.1f}".rstrip("0").rstrip(".") + suffix
+    return f"${value:,.0f}"
 
 
 def _add_chart(doc, png, caption):
@@ -127,6 +134,35 @@ def build_document(data):
     if not any(app.get("rating_count") for app in data["apps"]):
         doc.add_paragraph("Not enough rating data to plot market position.")
 
+    estimates = [(i, app) for i, app in enumerate(data["apps"], 1) if app.get("revenue")]
+    if any(app["revenue"].get("status") in ("available", "no_store_revenue") for _, app in estimates):
+        doc.add_heading("Estimated revenue", level=1)
+        doc.add_paragraph(
+            "Monthly revenue before Apple/Google fees, estimated from public App Store ratings and "
+            "top-grossing chart positions, not from reported figures. In testing on apps with known "
+            "revenue, the likely range held about 3 in 4 times for established apps (medium "
+            "confidence) and 2 in 3 times for small apps (low confidence).")
+        table = doc.add_table(rows=1, cols=5)
+        table.style = "Table Grid"
+        _soft_borders(table)
+        for cell, name in zip(table.rows[0].cells, ("No.", "Application", "Estimate", "Likely range", "Confidence")):
+            cell.text = name
+        for i, app in estimates:
+            rev = app["revenue"]
+            if rev.get("status") == "available":
+                values = (str(i), app["name"], f"~{_money(rev['estimate'])}/mo",
+                          f"{_money(rev['likely'][0])}–{_money(rev['likely'][1])}", rev["confidence"])
+            elif rev.get("status") == "no_store_revenue":
+                values = (str(i), app["name"], "None", "Free, no in-app purchases", "—")
+            else:
+                values = (str(i), app["name"], "Unavailable", "—", "—")
+            cells = table.add_row().cells
+            for cell, value in zip(cells, values):
+                cell.text = value
+        _bold_header(table)
+        _add_chart(doc, revenue_chart(data),
+                   "Figure 3. Estimated monthly revenue: likely range and estimate per competitor.")
+
     if data["feature_ranking"]:
         doc.add_heading("Feature uniqueness", level=1)
         doc.add_paragraph("Your features ranked from most to least unique, by how many of the "
@@ -144,7 +180,7 @@ def build_document(data):
                 cell.text = value
         _bold_header(ranking)
         _add_chart(doc, feature_coverage_chart(data),
-                   "Figure 3. How many competitors describe each of your features, "
+                   "Figure 4. How many competitors describe each of your features, "
                    "most unique first.")
 
     if data["feature_comparison"]:

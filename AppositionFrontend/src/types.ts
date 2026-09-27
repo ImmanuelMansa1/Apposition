@@ -88,7 +88,8 @@ export interface GeminiAnalysis {
 
 /** Monthly gross revenue estimated from public store signals (a range, never a reported figure). */
 export interface RevenueEstimate {
-  status: 'available' | 'unavailable'
+  /** no_store_revenue: free with no in-app purchases */
+  status: 'available' | 'unavailable' | 'no_store_revenue'
   estimate?: number
   /** Where the real figure most likely falls */
   likely?: [number, number]

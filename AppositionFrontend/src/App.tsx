@@ -13,7 +13,7 @@ import type { AnalysisResponse, AnalysisResult, Brief, RankedApp, RevenueEstimat
 import './App.css'
 
 type View = 'input' | 'extracting' | 'features' | 'loading' | 'results'
-type SortKey = 'similarity' | 'rating' | 'price'
+type SortKey = 'similarity' | 'rating' | 'price' | 'revenue'
 
 const HEADLINES = [
   'Test and build faster with Apposition.',
@@ -501,6 +501,7 @@ interface ResultsProps {
 function Results({ analysis: { brief, result }, onRestart }: ResultsProps) {
   const apps = result.results
   const gemini = result.analysis
+  const revenue = useMemo(() => result.revenue ?? [], [result])
   const [sort, setSort] = useState<SortKey>('similarity')
   const [open, setOpen] = useState<number | null>(apps.length ? 0 : null)
   const [planned, setPlanned] = useState<Set<number>>(new Set())
@@ -514,8 +515,16 @@ function Results({ analysis: { brief, result }, onRestart }: ResultsProps) {
     const indices = apps.map((_, i) => i)
     if (sort === 'rating') indices.sort((a, b) => apps[b].Rating - apps[a].Rating)
     if (sort === 'price') indices.sort((a, b) => priceValue(apps[a].Price) - priceValue(apps[b].Price))
+    if (sort === 'revenue') indices.sort((a, b) => revenueValue(revenue[b]) - revenueValue(revenue[a]))
     return indices
-  }, [apps, sort])
+  }, [apps, sort, revenue])
+
+  // One log scale for every card's revenue bar, so the bars compare across apps.
+  const revenueScale = useMemo(() => {
+    const ranges = revenue.filter((r) => r.status === 'available' && r.likely).map((r) => r.likely!)
+    if (!ranges.length) return null
+    return { lo: Math.log(Math.min(...ranges.map((r) => r[0]))), hi: Math.log(Math.max(...ranges.map((r) => r[1]))) }
+  }, [revenue])
 
   const grid = useMemo(() => evidenceGrid(result), [result])
   const ranking = useMemo(() => rankFeatures(grid), [grid])
@@ -603,7 +612,7 @@ function Results({ analysis: { brief, result }, onRestart }: ResultsProps) {
         <div className="section-head">
           <h2>Closest apps</h2>
           <div className="segmented" role="group" aria-label="Sort competitors">
-            {(['similarity', 'rating', 'price'] as SortKey[]).map((k) => (
+            {(['similarity', 'rating', 'price', 'revenue'] as SortKey[]).map((k) => (
               <button key={k} type="button" className={sort === k ? 'on' : undefined} onClick={() => setSort(k)}>
                 {k[0].toUpperCase() + k.slice(1)}
               </button>
@@ -622,6 +631,8 @@ function Results({ analysis: { brief, result }, onRestart }: ResultsProps) {
               app={apps[i]}
               explanation={explanation(i)}
               reviews={reviewsFor(i)}
+              revenue={revenue[i]}
+              revenueScale={revenueScale}
               open={open === i}
               onToggle={() => setOpen(open === i ? null : i)}
             />
@@ -802,10 +813,6 @@ function Results({ analysis: { brief, result }, onRestart }: ResultsProps) {
         </section>
       )}
 
-      {result.revenue_status === 'available' && result.revenue && (
-        <RevenueComparison apps={apps} revenue={result.revenue} />
-      )}
-
       {saveError && <p className="error">{saveError}</p>}
       <div className="actions sticky">
         <GlassButton variant="secondary" label="New idea" onTap={onRestart} />
@@ -825,71 +832,13 @@ interface CompetitorCardProps {
   app: RankedApp
   explanation?: string
   reviews: Review[]
+  revenue?: RevenueEstimate
+  revenueScale: { lo: number; hi: number } | null
   open: boolean
   onToggle: () => void
 }
 
-/* ---------------- Revenue comparison ---------------- */
-
-type RevenueRow = { app: RankedApp; rank: number; rev: Required<Pick<RevenueEstimate, 'estimate' | 'likely'>> & RevenueEstimate }
-
-function RevenueComparison({ apps, revenue }: { apps: RankedApp[]; revenue: RevenueEstimate[] }) {
-  // Highest estimate first; every bar shares one log scale so apps compare at a glance.
-  const rows = apps
-    .map((app, i) => ({ app, rank: i + 1, rev: revenue[i] }))
-    .filter((r): r is RevenueRow => r.rev?.status === 'available' && !!r.rev.estimate && !!r.rev.likely)
-    .sort((a, b) => b.rev.estimate - a.rev.estimate)
-  if (!rows.length) return null
-
-  const lo = Math.log(Math.min(...rows.map((r) => r.rev.likely[0])))
-  const hi = Math.log(Math.max(...rows.map((r) => r.rev.likely[1])))
-  const pos = (v: number) => `${((Math.log(v) - lo) / Math.max(hi - lo, 1e-9)) * 100}%`
-
-  return (
-    <section>
-      <div className="section-head">
-        <h2>Estimated revenue</h2>
-        <span className="muted">Per month, before store fees</span>
-      </div>
-      <ul className="revenue-list">
-        {rows.map(({ app, rank, rev }) => (
-          <li key={app.TrackId ?? rank} className="card revenue-row">
-            <AppIcon name={app.AppName} url={app.ArtworkUrl || undefined} />
-            <div className="revenue-body">
-              <p className="revenue-head">
-                <strong>
-                  {rank}. {app.AppName}
-                </strong>
-                <span className="revenue-estimate">~{money(rev.estimate)} / mo</span>
-              </p>
-              <div
-                className="revenue-bar"
-                role="img"
-                aria-label={`Likely ${money(rev.likely[0])} to ${money(rev.likely[1])} per month`}
-              >
-                <span className="revenue-range" style={{ left: pos(rev.likely[0]), width: `calc(${pos(rev.likely[1])} - ${pos(rev.likely[0])})` }} />
-                <span className="revenue-point" style={{ left: pos(rev.estimate) }} />
-              </div>
-              <p className="muted small">
-                likely {money(rev.likely[0])}–{money(rev.likely[1])} ·{' '}
-                <span className={`sev ${rev.confidence === 'medium' ? 'medium' : 'high'}`}>{rev.confidence} confidence</span> ·
-                based on {rev.basis}
-                {rev.paid_app && ' · paid app: not validated, treat as very rough'}
-              </p>
-            </div>
-          </li>
-        ))}
-      </ul>
-      <p className="muted small section-note revenue-note">
-        Estimated from public App Store ratings and top-grossing chart positions, not from reported revenue. In testing
-        on apps with known revenue, the likely range held about 3 in 4 times for established apps and 2 in 3 times for
-        small ones.
-      </p>
-    </section>
-  )
-}
-
-function CompetitorCard({ rank, app, explanation, reviews, open, onToggle }: CompetitorCardProps) {
+function CompetitorCard({ rank, app, explanation, reviews, revenue, revenueScale, open, onToggle }: CompetitorCardProps) {
   return (
     <li className={`card competitor${open ? ' open' : ''}`}>
       <button type="button" className="competitor-head" onClick={onToggle} aria-expanded={open}>
@@ -912,6 +861,7 @@ function CompetitorCard({ rank, app, explanation, reviews, open, onToggle }: Com
               <span className="muted">No ratings yet</span>
             )}
           </span>
+          <RevenueLine revenue={revenue} />
         </div>
         <Ring value={app.similarity_percentage / 100} basis={app.score_basis} />
         <span className="chevron" aria-hidden>
@@ -920,6 +870,7 @@ function CompetitorCard({ rank, app, explanation, reviews, open, onToggle }: Com
       </button>
       {open && (
         <div className="competitor-body">
+          <RevenueDetail revenue={revenue} scale={revenueScale} />
           <div>
             <h3>Why it ranks here</h3>
             <p>{explanation ?? 'No Gemini explanation for this run.'}</p>
@@ -950,6 +901,56 @@ function CompetitorCard({ rank, app, explanation, reviews, open, onToggle }: Com
         </div>
       )}
     </li>
+  )
+}
+
+/* ---------------- Revenue on the competitor cards ---------------- */
+
+function RevenueLine({ revenue }: { revenue?: RevenueEstimate }) {
+  if (revenue?.status === 'no_store_revenue') {
+    return <span className="small muted">No App Store revenue (free, nothing to buy)</span>
+  }
+  if (revenue?.status !== 'available' || !revenue.estimate) return null
+  return (
+    <span className="small revenue-line">
+      Est. revenue <strong>~{money(revenue.estimate)}/mo</strong>{' '}
+      <span className={`sev ${revenue.confidence === 'medium' ? 'medium' : 'high'}`}>{revenue.confidence} confidence</span>
+    </span>
+  )
+}
+
+function RevenueDetail({ revenue, scale }: { revenue?: RevenueEstimate; scale: { lo: number; hi: number } | null }) {
+  if (revenue?.status === 'no_store_revenue') {
+    return (
+      <div>
+        <h3>Estimated revenue</h3>
+        <p>
+          Free with no in-app purchases, so it earns nothing through the App Store. Any income comes from ads,
+          donations or outside the app.
+        </p>
+      </div>
+    )
+  }
+  if (revenue?.status !== 'available' || !revenue.estimate || !revenue.likely || !scale) return null
+  const pos = (v: number) => `${((Math.log(v) - scale.lo) / Math.max(scale.hi - scale.lo, 1e-9)) * 100}%`
+  const [low, high] = revenue.likely
+  return (
+    <div>
+      <h3>Estimated revenue</h3>
+      <p>
+        <strong>~{money(revenue.estimate)} / month</strong> <span className="muted small">before store fees</span>
+      </p>
+      <div className="revenue-bar" role="img" aria-label={`Likely ${money(low)} to ${money(high)} per month`}>
+        <span className="revenue-range" style={{ left: pos(low), width: `calc(${pos(high)} - ${pos(low)})` }} />
+        <span className="revenue-point" style={{ left: pos(revenue.estimate) }} />
+      </div>
+      <p className="muted small">
+        Likely {money(low)}–{money(high)} · based on {revenue.basis}
+        {revenue.paid_app && ' · paid app: not validated, treat as very rough'}. Bars share one scale across the
+        competitors. Estimated from public store data, not reported revenue: in testing the likely range held about{' '}
+        {revenue.confidence === 'medium' ? '3 in 4' : '2 in 3'} times.
+      </p>
+    </div>
   )
 }
 
@@ -1156,6 +1157,12 @@ function rankFeatures(grid: GridRow[]) {
       order,
     }))
     .sort((a, b) => a.described - b.described || a.related - b.related || a.order - b.order)
+}
+
+// Unknown or not-applicable revenue sorts last.
+function revenueValue(r?: RevenueEstimate) {
+  if (r?.status === 'available' && r.estimate) return r.estimate
+  return r?.status === 'no_store_revenue' ? 0 : -1
 }
 
 // Apple formats prices ("Free", "$2.99"); unknown prices sort last.

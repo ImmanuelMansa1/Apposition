@@ -5,6 +5,7 @@ or None when the run has nothing to plot. Colors are the validated default
 data-viz palette (blue, then orange), checked for colour-blind separation.
 """
 
+import unicodedata
 from io import BytesIO
 
 import matplotlib
@@ -54,6 +55,8 @@ def _compact(count, _position=None):
 
 
 def _short(name, limit=28):
+    # Full-width punctuation (e.g. "Slumber－Calm") is missing from the chart font.
+    name = unicodedata.normalize("NFKC", name)
     return name if len(name) <= limit else name[:limit - 1].rstrip() + "…"
 
 
@@ -107,6 +110,43 @@ def feature_coverage_chart(data):
     ax.legend(handles, ("Described", "Related", "Not shown"), loc="lower center",
               bbox_to_anchor=(0.5, 1.0), ncol=3, frameon=False, fontsize=8,
               labelcolor=TEXT, handlelength=1, handleheight=1)
+    return _png(fig)
+
+
+def _money(value, _position=None):
+    for size, suffix in ((1e9, "B"), (1e6, "M"), (1e3, "K")):
+        if value >= size:
+            return "$" + f"{value / size:.1f}".rstrip("0").rstrip(".") + suffix
+    return f"${value:.0f}"
+
+
+def revenue_chart(data):
+    """Each competitor's likely monthly revenue range (bar) and estimate (dot), log scale."""
+    rows = [(i, app) for i, app in enumerate(data["apps"], 1)
+            if (app.get("revenue") or {}).get("status") == "available"]
+    if not rows:
+        return None
+    fig, ax = _figure(0.6 + 0.42 * len(rows))
+    ypos = range(len(rows))[::-1]   # rank 1 on top, matching Figure 1
+    for y, (_, app) in zip(ypos, rows):
+        rev = app["revenue"]
+        low, high = rev["likely"]
+        ax.plot([low, high], [y, y], color=BLUE, alpha=0.35, linewidth=9, solid_capstyle="round")
+        ax.scatter([rev["estimate"]], [y], s=60, color=BLUE, edgecolor=SURFACE, linewidth=2, zorder=3)
+        ax.annotate(f"~{_money(rev['estimate'])}", (high, y), xytext=(8, 0), textcoords="offset points",
+                    va="center", fontsize=7.5, color=TEXT)
+    ax.set_yticks(list(ypos), [f"{i}. {_short(app['name'])}" for i, app in rows], color=TEXT, fontsize=8)
+    ax.set_xscale("log")
+    ax.xaxis.set_major_formatter(FuncFormatter(_money))
+    ax.xaxis.set_minor_formatter(NullFormatter())
+    ax.tick_params(which="minor", length=0)
+    lows = [app["revenue"]["likely"][0] for _, app in rows]
+    highs = [app["revenue"]["likely"][1] for _, app in rows]
+    ax.set_xlim(min(lows) / 1.5, max(highs) * 4)      # room for the value labels
+    ax.set_ylim(-0.6, len(rows) - 0.4)
+    ax.xaxis.grid(True, color=GRID, linewidth=0.6)
+    ax.set_xlabel("Monthly revenue before store fees (log scale). Bar: likely range. Dot: estimate.",
+                  fontsize=7.5, color=TEXT_MUTED)
     return _png(fig)
 
 
