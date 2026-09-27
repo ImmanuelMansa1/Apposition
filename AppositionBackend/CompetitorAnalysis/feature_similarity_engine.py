@@ -2,10 +2,12 @@
 
 #This module reuses the model already loaded by similarity_engine.py. It does
 #not reuse whole-description embeddings: each description passage needs its own
-from torch import embedding
-
 
 #embedding to serve as evidence for an individual feature.
+
+import re
+from sentence_transformers import util
+from embedding import collect_user_idea
 
 import re
 from sentence_transformers import util
@@ -16,12 +18,14 @@ def split_description(description):
     # App Store descriptions often use line breaks and bullets for features.
     sections = re.split(r"[\r\n]+|[•●▪]+", description or "")
     passages = []
+
     for section in sections:
         # Split prose into sentences; compare sentences, never individual words.
         for sentence in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", section):
-            passage = " ".join(sentence.split()).strip(" -–\t") # Remove the whitespace 
-            if passage: # Only keeps the non-empty passages. We don't want to compare empty strings.
+            passage = " ".join(sentence.split()).strip(" -–\t")  # Remove the whitespace
+            if passage:  # Only keeps the non-empty passages. We don't want to compare empty strings.
                 passages.append(passage)
+
     return passages
 
 
@@ -29,7 +33,7 @@ def build_feature_matrix(user_input, competitor_data, model, top_k=2,candidate_t
     if top_k < 1:
         raise ValueError("top_k must be at least 1")
 
-    features = [feature.strip() for feature in user_input["features"]
+    features = [feature.strip() for feature in user_input["Features"]
                 if isinstance(feature, str) and feature.strip()]
     apps = competitor_data["apps"]
     app_passages = [split_description(app.get("Description", "")) for app in apps]
@@ -75,3 +79,22 @@ def build_feature_matrix(user_input, competitor_data, model, top_k=2,candidate_t
         "competitors": [app.get("AppName", "") for app in apps],
         "rows": rows,
         "candidate_threshold": candidate_threshold,}
+
+def attach_feature_matches(competitor_data, matrix):
+    # Each entry links a user's feature to evidence from this competitor.
+    # These are candidates, not confirmed competitor features.
+    apps = competitor_data["apps"]
+
+    for app in apps:
+        app["features"] = []
+
+    for row in matrix["rows"]:
+        for cell in row["cells"]:
+            apps[cell["app_index"]]["features"].append({
+                "name": row["feature"],
+                "candidate_match": cell["candidate_match"],
+                "score": cell["highest_score"],
+                "evidence": cell["evidence"],
+            })
+
+    return competitor_data

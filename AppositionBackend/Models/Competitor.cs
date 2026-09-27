@@ -2,7 +2,13 @@ namespace AppositionBackend.Models;
 
 public class Competitor
 {
+    public long TrackId { get; set; }
+
     public string Name { get; set; } = string.Empty;
+
+    public string Developer { get; set; } = string.Empty;
+
+    public string Price { get; set; } = string.Empty;
 
     public string Description { get; set; } = string.Empty;
 

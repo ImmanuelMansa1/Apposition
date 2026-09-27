@@ -1,18 +1,25 @@
 # These are the imports we'll be using from the library
 # DISCLAIMER. I take some notes when I code, it helps me track what i'm doing and why. I will leave them in the code for now, but they can be removed later if needed.
+
+from filter_reviews import recent_negative_reviews
+from gemini_api import analyze_competitors
 from sentence_transformers import SentenceTransformer as st
 from sentence_transformers import util
 import json
-
+from embedding import collect_user_idea
+from feature_similarity_engine import build_feature_matrix, attach_feature_matches
 
 model = st("all-MiniLM-L6-v2")
 
 
 # We are using a dictionary to store the cleaned app information. Potentially, later we could use an OpenAI API create a similar dictionary on the user input side for more accurate scoring
 # If we have time, we'll do this
-def parse_itunes_data(file_path):
-    with open(file_path, "r", encoding="utf-8") as file:
-        data = json.load(file)
+def parse_itunes_data(source):
+    if isinstance(source, dict):
+        data = source
+    else:
+        with open(source, "r", encoding="utf-8") as file:
+            data = json.load(file)
 
     apps = []
     for app in data["results"]:
@@ -40,7 +47,12 @@ def embed_competitor_apps(parsed_data):
 def cosine_similarity_score(user_input, parsed_data):
     # We turn the user's input into a vector so
     # Include the name and description, just as we did for each competitor.
-    user_text = f"{user_input['AppName']}. {user_input['Description']}"
+    user_text = ". ".join(
+    part for part in (
+        user_input.get("AppName", ""),
+        user_input.get("Description", ""))
+    if part
+)
     user_embedding = model.encode(user_text, convert_to_tensor=True)
 
     # Compare the user's vector with each app's vector.
@@ -85,17 +97,18 @@ def cleaned_gemini_records(user_input, recommendation_input):
 
 if __name__ == "__main__":
     # Sample user input for testing. It uses the same fields as an app record.
-    user_input = {
-        "AppName": "Peer Mentor",
-        "Developer": "",
-        "Price": "",
-        "Description": "An app that matches students with peer mentors."
-    }
-
 # Controller
+
     parsed_data = parse_itunes_data("competitor_app_responses.json")
     embedded_data = embed_competitor_apps(parsed_data)
+    user_input = collect_user_idea()
     top_five = cosine_similarity_score(user_input, embedded_data)
+    feature_matrix = build_feature_matrix(user_input, top_five, model)
+    review_data = recent_negative_reviews(top_five)
+    gemini_analysis = analyze_competitors(
+    user_input, top_five, feature_matrix, review_data
+    )
+    top_five = attach_feature_matches(top_five, feature_matrix)
     gemini_records = cleaned_gemini_records(user_input, top_five)
 
     print(json.dumps(gemini_records, indent=2))

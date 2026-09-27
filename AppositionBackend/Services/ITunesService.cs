@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Linq;
 using AppositionBackend.Models;
 
 namespace AppositionBackend.Services;
@@ -7,53 +9,85 @@ public class ItunesService
 {
     private readonly HttpClient _httpClient;
 
-    public ItunesService(HttpClient httpClient)
-    {
-        _httpClient = httpClient;
-    }
+    public ItunesService(HttpClient httpClient) => _httpClient = httpClient;
 
     public async Task<List<Competitor>> Search(AnalysisRequest request)
     {
-        var searchTerms = new List<string>
+        // Apple searches short terms more reliably than a full app pitch.
+        var ignored = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            request.AppIdea,
-            request.KeyFeatures,
-            request.TargetAudience
+            "a", "an", "the", "app", "application", "idea", "that",
+            "with", "for", "to", "and", "of", "is", "allows", "users"
         };
+        var ideaTerm = string.Join(" ", Regex.Matches(
+                request.AppIdea ?? "", @"[\p{L}\p{N}]+")
+            .Cast<Match>()
+            .Select(match => match.Value)
+            .Where(word => !ignored.Contains(word))
+            .Take(5));
 
-        var competitors = new List<Competitor>();
+var terms = new[] { ideaTerm }
+    .Concat(request.KeyFeatures ?? [])
+    .Select(term => term?.Trim() ?? "")
+    .Where(term => !string.IsNullOrWhiteSpace(term))
+    .Distinct(StringComparer.OrdinalIgnoreCase)
+    .ToList();
 
-        foreach (var term in searchTerms)
+if (terms.Count > 10)
+    throw new ArgumentException(
+        "Use at most ten distinct iTunes search terms per request.");
+
+        var batches = new List<List<ItunesApp>>();
+
+        foreach (var term in terms)
         {
             var url =
                 $"https://itunes.apple.com/search" +
                 $"?term={Uri.EscapeDataString(term)}" +
-                $"&entity=software" +
-                $"&limit=10";
+                $"&country=us&entity=software&limit=10";
 
-            var response = await _httpClient.GetAsync(url);
-
+            using var response = await _httpClient.GetAsync(url);
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-
             var result = JsonSerializer.Deserialize<ItunesResponse>(
                 json,
                 new JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true
-                }
-            );
+                });
 
-            if (result?.Results == null)
-                continue;
+            batches.Add(result?.Results ?? []);
+        }
 
-            foreach (var app in result.Results)
+        // Take results across searches, keeping at most ten distinct app IDs.
+        var competitors = new List<Competitor>();
+        var seenIds = new HashSet<long>();
+
+        for (var rank = 0; rank < 10 && competitors.Count < 10; rank++)
+        {
+            foreach (var batch in batches)
             {
+                if (competitors.Count == 10) break;
+                if (rank >= batch.Count) continue;
+
+                var app = batch[rank];
+
+                if (app.TrackId is not long id ||
+                    string.IsNullOrWhiteSpace(app.TrackName) ||
+                    string.IsNullOrWhiteSpace(app.Description) ||
+                    !seenIds.Add(id))
+                {
+                    continue;
+                }
+
                 competitors.Add(new Competitor
                 {
-                    Name = app.TrackName ?? "",
-                    Description = app.Description ?? "",
+                    TrackId = id,
+                    Name = app.TrackName,
+                    Developer = app.ArtistName ?? "",
+                    Price = app.FormattedPrice ?? "",
+                    Description = app.Description,
                     Genre = app.PrimaryGenreName ?? "",
                     Rating = app.AverageUserRating ?? 0,
                     RatingCount = app.UserRatingCount ?? 0,
@@ -63,33 +97,26 @@ public class ItunesService
             }
         }
 
-        return competitors
-            .GroupBy(x => x.Name)
-            .Select(x => x.First())
-            .ToList();
+        return competitors;
     }
 }
 
 public class ItunesResponse
 {
     public int ResultCount { get; set; }
-
     public List<ItunesApp> Results { get; set; } = [];
 }
 
 public class ItunesApp
 {
+    public long? TrackId { get; set; }
     public string? TrackName { get; set; }
-
+    public string? ArtistName { get; set; }
+    public string? FormattedPrice { get; set; }
     public string? Description { get; set; }
-
     public string? PrimaryGenreName { get; set; }
-
     public double? AverageUserRating { get; set; }
-
     public int? UserRatingCount { get; set; }
-
     public string? TrackViewUrl { get; set; }
-
     public string? ArtworkUrl100 { get; set; }
 }

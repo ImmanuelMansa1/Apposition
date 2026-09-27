@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Linq;
 using AppositionBackend.Models;
 
 namespace AppositionBackend.Services;
@@ -7,32 +8,35 @@ public class PythonService
 {
     private readonly HttpClient _httpClient;
 
-    public PythonService(HttpClient httpClient)
-    {
-        _httpClient = httpClient;
-    }
+    public PythonService(HttpClient httpClient) => _httpClient = httpClient;
 
     public async Task<List<CompetitorResult>> GetTopCompetitors(
         AnalysisRequest request,
         List<Competitor> competitors)
     {
-        var pythonRequest = new PythonAnalysisRequest
+        var pythonRequest = new
         {
-            AppIdea = request.AppIdea,
-            KeyFeatures = request.KeyFeatures,
-            TargetAudience = request.TargetAudience,
-            Competitors = competitors
+            appIdea = request.AppIdea,
+            keyFeatures = request.KeyFeatures,
+            targetAudience = request.TargetAudience,
+            competitors = competitors.Select(app => new
+            {
+                name = app.Name,
+                developer = app.Developer,
+                price = app.Price,
+                description = app.Description,
+                trackId = app.TrackId
+            }).ToList()
         };
 
-        var response = await _httpClient.PostAsJsonAsync(
+        using var response = await _httpClient.PostAsJsonAsync(
             "/similarity",
-            pythonRequest
-        );
+            pythonRequest);
 
         response.EnsureSuccessStatusCode();
 
-        var result =
-            await response.Content.ReadFromJsonAsync<PythonSimilarityResponse>();
+        var result = await response.Content
+            .ReadFromJsonAsync<PythonSimilarityResponse>();
 
         return result?.Results ?? [];
     }
