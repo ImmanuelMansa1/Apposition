@@ -9,6 +9,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
+from charts import feature_coverage_chart, market_position_chart, similarity_chart
 from market_data import load_market_data
 
 
@@ -42,6 +43,13 @@ def _bold_header(table):
         for paragraph in cell.paragraphs:
             for run in paragraph.runs:
                 run.bold = True
+
+
+def _add_chart(doc, png, caption):
+    # Charts are skipped when a run has nothing to plot (for example, no ratings).
+    if png:
+        doc.add_picture(BytesIO(png), width=Inches(6.2))
+        doc.add_paragraph(caption).runs[0].italic = True
 
 
 def build_document(data):
@@ -103,12 +111,21 @@ def build_document(data):
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
     _bold_header(table)
     doc.add_paragraph("Similarity indices rank listing text; they are not percentages of shared features.")
+    _add_chart(doc, similarity_chart(data),
+               "Figure 1. Similarity index of the five closest App Store listings.")
     for i, app in enumerate(data["apps"]):
         explanation = data["competitor_summaries"].get(i)
         if explanation:
             paragraph = doc.add_paragraph(style="Normal")
             paragraph.add_run(f"{i + 1}. {app['name']}: ").bold = True
             paragraph.add_run(explanation)
+
+    doc.add_heading("Market position", level=1)
+    _add_chart(doc, market_position_chart(data),
+               "Figure 2. Average rating against number of ratings. Right means more "
+               "established; high means better liked.")
+    if not any(app.get("rating_count") for app in data["apps"]):
+        doc.add_paragraph("Not enough rating data to plot market position.")
 
     if data["feature_ranking"]:
         doc.add_heading("Feature uniqueness", level=1)
@@ -126,6 +143,9 @@ def build_document(data):
                                            f"{item['related']} of {item['apps']}")):
                 cell.text = value
         _bold_header(ranking)
+        _add_chart(doc, feature_coverage_chart(data),
+                   "Figure 3. How many competitors describe each of your features, "
+                   "most unique first.")
 
     if data["feature_comparison"]:
         doc.add_heading("Feature comparison", level=1)

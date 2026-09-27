@@ -5,5 +5,7 @@ sentence-transformers
 google-genai
 python-dotenv
 python-docx
+# Charts in the .docx report
+matplotlib
 # Only for the optional market_insights.py dashboard
 streamlit
