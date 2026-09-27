@@ -8,7 +8,7 @@ builder.Services.AddControllers();
 builder.Services.AddHttpClient<ItunesService>();
 
 // Where the Python analysis API lives. Locally it's localhost:8000; on Render
-// the blueprint sets PythonApiUrl to the Python service's internal host:port.
+// the blueprint sets PythonApiUrl to the Python service's URL (a bare host:port also works).
 var pythonApiUrl = builder.Configuration["PythonApiUrl"] ?? "http://localhost:8000";
 if (!pythonApiUrl.Contains("://"))
     pythonApiUrl = $"http://{pythonApiUrl}";

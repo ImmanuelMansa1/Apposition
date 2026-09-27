@@ -7,7 +7,7 @@ services:
     runtime: docker
     dockerContext: ./AppositionBackend/CompetitorAnalysis
     dockerfilePath: ./AppositionBackend/CompetitorAnalysis/Dockerfile
-    plan: starter
+    plan: free
     healthCheckPath: /health
     envVars:
       - key: GEMINI_KEY
@@ -19,13 +19,13 @@ services:
     runtime: docker
     dockerContext: ./AppositionBackend
     dockerfilePath: ./AppositionBackend/Dockerfile
-    plan: starter
+    plan: free
     healthCheckPath: /health
     envVars:
-      - key: PythonApiUrl     # internal address of the Python service
-        fromService:
-          type: web
-          name: apposition-python
-          property: hostport
+      # Public address of the Python service. Free services can't use Render's
+      # private network. If Render gives the Python service a different URL
+      # (e.g. with a suffix), change this in the dashboard.
+      - key: PythonApiUrl
+        value: https://apposition-python.onrender.com
       - key: AllowedOrigins   # the Vercel site URL, e.g. https://apposition.vercel.app
         sync: false

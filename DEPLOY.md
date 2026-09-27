@@ -22,12 +22,12 @@ It is never in the repo or in the website's code.
 5. When both are **Live**, open `apposition-api` and copy its URL, e.g.
    `https://apposition-api.onrender.com`. Check `<that URL>/health` shows `"ok"`.
 
-**Plans:** the blueprint uses **Starter** (512 MB, always on). The Python service
-uses about 250–400 MB, so Starter should be enough. On the **Free** plan, services
-sleep after 15 minutes idle (the first analysis then takes a minute or more to wake
-them), and free services can't receive traffic on Render's private network. If you
-use Free, set `PythonApiUrl` on `apposition-api` to the Python service's public URL,
-e.g. `https://apposition-python.onrender.com`.
+**Plan:** the blueprint uses Render's **Free** plan. Free services sleep after 15
+minutes without traffic; the first analysis after that waits for them to wake
+(the Python service reloads its AI model, so allow 1–2 minutes). Open the site a
+few minutes before a demo to wake them. Free instances get about 750 hours a month
+per workspace, shared by both services. For always-on, change `plan: free` to
+`plan: starter` (512 MB, about $7/month per service).
 
 ## 2. Website on Vercel
 
