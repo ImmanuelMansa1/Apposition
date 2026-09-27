@@ -6,7 +6,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 
 builder.Services.AddHttpClient<ItunesService>();
-
+ma
 builder.Services.AddHttpClient<PythonService>(client =>
 {
     client.BaseAddress = new Uri("http://localhost:8000");
