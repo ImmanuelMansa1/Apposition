@@ -46,9 +46,31 @@ def _feature_comparison(analysis, feature_matrix, app_count):
     return rows
 
 
+def feature_ranking(feature_comparison):
+    """Rank the founder's features from most to least unique.
+
+    Counted from the verdicts, not asked of Gemini: a feature few competitors
+    describe is a possible gap; one most of them describe is table stakes.
+    """
+    ranked = []
+    for order, row in enumerate(feature_comparison):
+        verdicts = [cell["verdict"] for cell in row["cells"]]
+        ranked.append({
+            "feature": row["feature"],
+            "described": verdicts.count("supported") + verdicts.count("candidate"),
+            "related": verdicts.count("related"),
+            "apps": len(verdicts),
+            "order": order,
+        })
+    # Fewest described first, then fewest related; ties keep the founder's order.
+    ranked.sort(key=lambda item: (item["described"], item["related"], item["order"]))
+    return ranked
+
+
 def _build(idea, apps, candidate_count, analysis, reviews, feature_matrix,
            query_source, review_status, planned=()):
     analysis = analysis or {}
+    comparison = _feature_comparison(analysis, feature_matrix, len(apps))
     differentiation = analysis.get("differentiation", [])
     if planned:
         # The founder's ticked ideas only, in the order Gemini ranked them.
@@ -74,7 +96,8 @@ def _build(idea, apps, candidate_count, analysis, reviews, feature_matrix,
             item["app_index"]: item["explanation"]
             for item in analysis.get("competitor_summaries", [])
         },
-        "feature_comparison": _feature_comparison(analysis, feature_matrix, len(apps)),
+        "feature_comparison": comparison,
+        "feature_ranking": feature_ranking(comparison),
         "differentiation": differentiation,
         "review_improvements": analysis.get("review_improvements", []),
         "reviews": (reviews or {}).get("apps", []),

@@ -1,4 +1,4 @@
-import type { AnalysisResponse, AnalysisResult } from './types'
+import type { AnalysisResponse, AnalysisResult, Brief } from './types'
 
 // Vite proxies /api to the C# backend (see vite.config.ts).
 
@@ -12,11 +12,23 @@ async function failure(res: Response) {
   }
 }
 
-export async function analyzeIdea(prompt: string): Promise<AnalysisResponse> {
-  const res = await fetch('/api/analysis', {
+/** Step 1: Gemini splits the pitch into idea, features and audience for review. */
+export async function extractBrief(prompt: string): Promise<Brief> {
+  const res = await fetch('/api/analysis/brief', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt }),
+  })
+  if (!res.ok) throw await failure(res)
+  return res.json()
+}
+
+/** Step 2: the full analysis, using the brief with the founder's edited features. */
+export async function analyzeIdea(prompt: string, brief: Brief): Promise<AnalysisResponse> {
+  const res = await fetch('/api/analysis', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, brief }),
   })
   if (!res.ok) throw await failure(res)
   return res.json()

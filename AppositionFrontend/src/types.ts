@@ -10,6 +10,8 @@ export interface Brief {
   /** True when the pitch named none and Gemini derived them */
   featuresInferred: boolean
   audienceInferred: boolean
+  /** Other features apps like this often have; only analysed if the founder adds them */
+  suggestedFeatures: string[]
   status: 'available' | 'unavailable'
 }
 

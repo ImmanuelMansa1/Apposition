@@ -1167,6 +1167,177 @@ button {
   font-size: 15px;
 }
 
+/* feature review step */
+.features-step {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  animation: rise 0.45s ease both;
+}
+
+.feature-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.feature-chip {
+  padding: 4px 6px 4px 12px;
+}
+
+.feature-source {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  opacity: 0.7;
+}
+
+.feature-remove {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.feature-remove:hover {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.add-feature {
+  position: relative;
+}
+
+.add-toggle {
+  cursor: pointer;
+}
+
+.add-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.feature-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 10;
+  width: min(320px, calc(100vw - 48px));
+  padding: 12px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.feature-menu form {
+  display: flex;
+  gap: 6px;
+}
+
+.feature-menu input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text-h);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+.feature-menu input:focus {
+  outline: none;
+  border-color: var(--accent-border);
+}
+
+.feature-menu form button {
+  font: inherit;
+  font-size: 14px;
+  color: var(--accent-ink);
+  background: var(--accent-bg);
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.feature-menu form button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.feature-menu ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.feature-menu li button {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text-h);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.feature-menu li button:hover,
+.feature-menu li button:focus-visible {
+  background: var(--accent-bg);
+}
+
+/* feature uniqueness ranking */
+.uniqueness {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.uniqueness li {
+  display: flex;
+  gap: 14px;
+  padding: 14px 16px;
+}
+
+.uniq-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.uniq-bar {
+  display: flex;
+  height: 6px;
+  margin: 8px 0 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.uniq-bar .described { background: var(--sev-medium); }
+.uniq-bar .related { background: color-mix(in srgb, var(--sev-medium) 40%, transparent); }
+
 /* plan */
 .plan-item {
   display: flex;
@@ -1366,6 +1537,22 @@ button {
   .evidence-grid th[scope='row'],
   .evidence-grid thead th:first-child {
     min-width: 110px;
+  }
+
+  /* Span the card instead of hanging off a button near the right edge */
+  .features-step .idea-card {
+    position: relative;
+  }
+
+  .add-feature {
+    position: static;
+  }
+
+  .feature-menu {
+    top: auto;
+    left: 12px;
+    right: 12px;
+    width: auto;
   }
 }
 

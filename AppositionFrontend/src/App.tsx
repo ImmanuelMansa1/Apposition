@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { SubmitEvent, KeyboardEvent } from 'react'
-import { analyzeIdea, downloadReport } from './api'
+import { analyzeIdea, downloadReport, extractBrief } from './api'
 import LiquidGlassButton from './LiquidGlassButton'
 import type { LiquidGlassButtonProps } from './LiquidGlassButton'
 import Preloader from './Preloader'
@@ -9,10 +9,10 @@ import Showcase from './Showcase'
 import Starfield from './Starfield'
 import { scrollToTop, startSmoothScroll } from './SmoothScroll'
 import TopApps from './TopApps'
-import type { AnalysisResponse, AnalysisResult, RankedApp, Review, Verdict } from './types'
+import type { AnalysisResponse, AnalysisResult, Brief, RankedApp, Review, Verdict } from './types'
 import './App.css'
 
-type View = 'input' | 'loading' | 'results'
+type View = 'input' | 'extracting' | 'features' | 'loading' | 'results'
 type SortKey = 'similarity' | 'rating' | 'price'
 
 const HEADLINES = [
@@ -22,12 +22,13 @@ const HEADLINES = [
 ]
 
 const STAGES = [
-  'Reading your idea',
   'Searching the App Store',
   'Scoring similarity',
   'Reading competitor reviews',
   'Building your strategy',
 ]
+const BRIEF_STAGES = ['Reading your idea', 'Finding its features']
+
 // The real pipeline takes 20–60 s; the last stage holds until it answers.
 const STAGE_MS = 2500
 
@@ -49,6 +50,8 @@ const ThemeContext = createContext<Theme>('light')
 function App() {
   const [view, setView] = useState<View>('input')
   const [prompt, setPrompt] = useState('')
+  const [brief, setBrief] = useState<Brief | null>(null)
+  const [features, setFeatures] = useState<FeatureItem[]>([])
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [preloading, setPreloading] = useState(true)
@@ -72,15 +75,33 @@ function App() {
 
   const landing = view === 'input'
 
+  // Step 1: pull the features out of the pitch so the founder can edit them.
   const run = async () => {
-    setView('loading')
+    setView('extracting')
     setError(null)
     try {
-      setAnalysis(await analyzeIdea(prompt.trim()))
-      setView('results')
+      const extracted = await extractBrief(prompt.trim())
+      setBrief(extracted)
+      const source: FeatureSource = extracted.featuresInferred ? 'auto' : 'yours'
+      setFeatures(extracted.keyFeatures.map((text) => ({ text, source })))
+      setView('features')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong')
       setView('input')
+    }
+  }
+
+  // Step 2: the full analysis with the edited feature list.
+  const analyze = async () => {
+    if (!brief) return
+    setView('loading')
+    setError(null)
+    try {
+      setAnalysis(await analyzeIdea(prompt.trim(), { ...brief, keyFeatures: features.map((f) => f.text) }))
+      setView('results')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong')
+      setView('features')
     }
   }
 
@@ -91,6 +112,8 @@ function App() {
 
   const restart = () => {
     setPrompt('')
+    setBrief(null)
+    setFeatures([])
     setAnalysis(null)
     setView('input')
   }
@@ -142,7 +165,18 @@ function App() {
               How it works <span aria-hidden>↓</span>
             </a>
           )}
-          {view === 'loading' && <Loading />}
+          {view === 'extracting' && <Loading stages={BRIEF_STAGES} caption="Reading your idea…" />}
+          {view === 'features' && brief && (
+            <FeatureEditor
+              brief={brief}
+              features={features}
+              setFeatures={setFeatures}
+              error={error}
+              onBack={() => setView('input')}
+              onAnalyze={analyze}
+            />
+          )}
+          {view === 'loading' && <Loading stages={STAGES} caption="Scanning the App Store for your competitors…" />}
           {view === 'results' && analysis && <Results analysis={analysis} onRestart={restart} />}
         </main>
 
@@ -244,22 +278,193 @@ function BriefForm({ prompt, setPrompt, onSubmit, error, introDone }: BriefFormP
   )
 }
 
+/* ---------------- Features (review before analysis) ---------------- */
+
+// Match MAX_FEATURES / MAX_FEATURE_CHARS in gemini_api.py and IdeaPrompt.cs.
+const MAX_FEATURES = 8
+const MAX_FEATURE_CHARS = 80
+
+// Where a feature came from: named in the pitch, derived by Gemini because the
+// pitch named none, picked from Gemini's suggestions, or typed by the founder.
+type FeatureSource = 'yours' | 'auto' | 'suggested' | 'custom'
+
+interface FeatureItem {
+  text: string
+  source: FeatureSource
+}
+
+const SOURCE_LABEL: Record<FeatureSource, string | null> = {
+  yours: null,
+  auto: 'auto',
+  suggested: 'suggested',
+  custom: 'added',
+}
+
+interface FeatureEditorProps {
+  brief: Brief
+  features: FeatureItem[]
+  setFeatures: (f: FeatureItem[]) => void
+  error: string | null
+  onBack: () => void
+  onAnalyze: () => void
+}
+
+function FeatureEditor({ brief, features, setFeatures, error, onBack, onAnalyze }: FeatureEditorProps) {
+  const has = (text: string) => features.some((f) => f.text.toLowerCase() === text.toLowerCase())
+  const full = features.length >= MAX_FEATURES
+
+  const add = (text: string, source: FeatureSource) => {
+    const clean = text.trim().replace(/\s+/g, ' ')
+    if (clean && !has(clean) && !full) setFeatures([...features, { text: clean, source }])
+  }
+
+  return (
+    <section className="features-step">
+      <div className="card idea-card">
+        <h2>Check your features</h2>
+        <p className="summary">{brief.appIdea}</p>
+        {brief.targetAudience && (
+          <p className="muted small">
+            For {brief.targetAudience}
+            {brief.audienceInferred && ' (inferred)'}
+          </p>
+        )}
+        {brief.status === 'unavailable' && (
+          <p className="notice">Gemini couldn't read the pitch, so add your features yourself.</p>
+        )}
+        <p className="muted small">
+          Each feature is checked against competitor listings. Remove any that don't fit and add what's missing.
+        </p>
+
+        <ul className="feature-list" aria-label="Features to compare">
+          {features.map((f) => (
+            <li key={f.text} className="chip feature-chip">
+              {f.text}
+              {SOURCE_LABEL[f.source] && <span className="feature-source">{SOURCE_LABEL[f.source]}</span>}
+              <button
+                type="button"
+                className="feature-remove"
+                onClick={() => setFeatures(features.filter((x) => x !== f))}
+                aria-label={`Remove ${f.text}`}
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+          <li>
+            <AddFeature
+              suggestions={brief.suggestedFeatures.filter((s) => !has(s))}
+              disabled={full}
+              onAdd={add}
+            />
+          </li>
+        </ul>
+        <p className={`muted small${full ? ' char-count over' : ''}`}>
+          {features.length}/{MAX_FEATURES} features{full && ' — remove one to add another'}
+        </p>
+        {error && <p className="error">{error}</p>}
+      </div>
+
+      <div className="actions">
+        <GlassButton variant="secondary" label="Edit idea" onTap={onBack} />
+        <GlassButton label="Analyze" disabled={features.length === 0} onTap={onAnalyze} />
+      </div>
+    </section>
+  )
+}
+
+interface AddFeatureProps {
+  suggestions: string[]
+  disabled: boolean
+  onAdd: (text: string, source: FeatureSource) => void
+}
+
+function AddFeature({ suggestions, disabled, onAdd }: AddFeatureProps) {
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const root = useRef<HTMLDivElement>(null)
+
+  // Close when clicking anywhere outside the menu.
+  useEffect(() => {
+    if (!open) return
+    const close = (e: PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [open])
+
+  const addCustom = (e: SubmitEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!text.trim()) return
+    onAdd(text, 'custom')
+    setText('')
+  }
+
+  return (
+    <div className="add-feature" ref={root} onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}>
+      <button
+        type="button"
+        className="chip ghost add-toggle"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen(!open)}
+      >
+        + Add feature <span aria-hidden>▾</span>
+      </button>
+      {open && (
+        <div className="feature-menu card">
+          <form onSubmit={addCustom}>
+            <input
+              autoFocus
+              value={text}
+              maxLength={MAX_FEATURE_CHARS}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Type your own feature"
+              aria-label="Your own feature"
+            />
+            <button type="submit" disabled={!text.trim()}>
+              Add
+            </button>
+          </form>
+          {suggestions.length > 0 ? (
+            <>
+              <p className="muted small">Common in apps like this</p>
+              <ul>
+                {suggestions.map((s) => (
+                  <li key={s}>
+                    <button type="button" onClick={() => onAdd(s, 'suggested')}>
+                      + {s}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="muted small">No more suggestions. Type your own above.</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ---------------- Loading ---------------- */
 
-function Loading() {
+function Loading({ stages, caption }: { stages: string[]; caption: string }) {
   const [stage, setStage] = useState(0)
 
   useEffect(() => {
-    const id = setInterval(() => setStage((s) => Math.min(s + 1, STAGES.length - 1)), STAGE_MS)
+    const id = setInterval(() => setStage((s) => Math.min(s + 1, stages.length - 1)), STAGE_MS)
     return () => clearInterval(id)
-  }, [])
+  }, [stages])
 
   return (
     <section className="loading" aria-live="polite">
       <Orbit />
-      <p className="fetch-caption">Scanning the App Store for your competitors&hellip;</p>
+      <p className="fetch-caption">{caption}</p>
       <ul>
-        {STAGES.map((label, i) => (
+        {stages.map((label, i) => (
           <li key={label} className={i < stage ? 'done' : i === stage ? 'active' : undefined}>
             <span className="dot">{i < stage ? '✓' : ''}</span>
             {label}
@@ -313,6 +518,7 @@ function Results({ analysis: { brief, result }, onRestart }: ResultsProps) {
   }, [apps, sort])
 
   const grid = useMemo(() => evidenceGrid(result), [result])
+  const ranking = useMemo(() => rankFeatures(grid), [grid])
 
   const explanation = (i: number) => gemini?.competitor_summaries.find((s) => s.app_index === i)?.explanation
   const reviewsFor = (i: number) => result.reviews.apps[i]?.reviews ?? []
@@ -422,6 +628,37 @@ function Results({ analysis: { brief, result }, onRestart }: ResultsProps) {
           ))}
         </ul>
       </section>
+
+      {ranking.length > 0 && (
+        <section>
+          <div className="section-head">
+            <h2>Your features, most unique first</h2>
+            <span className="muted">Counted from the evidence below</span>
+          </div>
+          <ol className="uniqueness">
+            {ranking.map((f, i) => (
+              <li key={f.feature} className="card">
+                <span className="rank">{i + 1}</span>
+                <div className="uniq-body">
+                  <p className="issue">
+                    {f.feature}{' '}
+                    {f.described === 0 && f.related === 0 && <span className="sev low">gap</span>}
+                    {f.described >= Math.ceil(apps.length * 0.6) && <span className="sev medium">common</span>}
+                  </p>
+                  <div className="uniq-bar" aria-hidden>
+                    <span className="described" style={{ width: `${(f.described / apps.length) * 100}%` }} />
+                    <span className="related" style={{ width: `${(f.related / apps.length) * 100}%` }} />
+                  </div>
+                  <p className="muted small">
+                    {f.described} of {apps.length} listings describe it
+                    {f.related > 0 && `; ${f.related} describe something related`}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       {grid.length > 0 && (
         <section>
@@ -834,6 +1071,19 @@ function evidenceGrid(result: AnalysisResult): GridRow[] {
       evidence: c.candidate_match ? (c.evidence[0]?.passage ?? '') : '',
     })),
   }))
+}
+
+// Most unique first: fewest listings describing it, then fewest related.
+// Counted from the verdicts, never asked of Gemini; ties keep the founder's order.
+function rankFeatures(grid: GridRow[]) {
+  return grid
+    .map((row, order) => ({
+      feature: row.feature,
+      described: row.cells.filter((c) => c.verdict === 'supported' || c.verdict === 'candidate').length,
+      related: row.cells.filter((c) => c.verdict === 'related').length,
+      order,
+    }))
+    .sort((a, b) => a.described - b.described || a.related - b.related || a.order - b.order)
 }
 
 // Apple formats prices ("Free", "$2.99"); unknown prices sort last.

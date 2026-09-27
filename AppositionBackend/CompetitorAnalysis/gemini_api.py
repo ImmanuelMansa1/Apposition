@@ -6,12 +6,15 @@ from typing import Literal
 
 from dotenv import load_dotenv
 from google import genai
-from google.genai import types
+from google.genai import errors, types
 from pydantic import BaseModel, Field
 
 
 # The founder's idea text is capped; listings, reviews and Gemini output are not.
 MAX_IDEA_CHARS = 1000
+# Keeps the evidence grid readable and iTunes searches (idea + features) within ten.
+MAX_FEATURES = 8
+MAX_FEATURE_CHARS = 80
 
 
 class CompetitorSummary(BaseModel):
@@ -70,6 +73,9 @@ class IdeaBrief(BaseModel):
         description="True when the prompt named no features and they were derived.")
     audience_inferred: bool = Field(
         description="True when the prompt named no audience and it was derived.")
+    suggested_features: list[str] = Field(
+        description="3 to 6 other short capability phrases apps like this commonly "
+                    "offer, not already in features.")
 
 
 BRIEF_INSTRUCTIONS = """You turn a founder's one-message app pitch into a
@@ -79,7 +85,9 @@ feature phrase (for example "in-app chat", not "users can chat in the app").
 If the pitch names no features, derive two or three core capabilities the
 idea cannot work without and set features_inferred. If it names no audience,
 give the most plausible one in a few words and set audience_inferred. Never
-invent a name; leave app_name empty unless the pitch states one."""
+invent a name; leave app_name empty unless the pitch states one. Separately,
+suggest a few other features apps in this category commonly offer, as
+options the founder may add; never repeat one already in features."""
 
 
 SYSTEM_INSTRUCTIONS = """You analyze App Store competition for a founder.
@@ -173,6 +181,15 @@ def _quote_in_review(ref, expected_apps, review_groups):
     return review.get("rating") in (1, 2) and bool(quote) and quote in source
 
 
+def _dedupe(phrases):
+    # Blank or repeated phrases would duplicate rows in the evidence grid.
+    unique = {}
+    for phrase in phrases:
+        if phrase.strip():
+            unique.setdefault(phrase.strip().casefold(), phrase.strip())
+    return list(unique.values())
+
+
 def _check_idea_length(text):
     # Reject rather than truncate, so the founder knows what was analysed.
     if len(text) > MAX_IDEA_CHARS:
@@ -189,13 +206,14 @@ def _client():
         api_key = os.getenv("GEMINI_KEY")
         if not api_key:
             raise RuntimeError("Set GEMINI_KEY in .env.local beside gemini_api.py")
-        # Gemini answers 429/503 when busy; retry with backoff before giving up.
+        # Gemini answers 5xx when busy; retry with backoff before giving up. A 429
+        # (quota spent) will not clear in seconds, so _generate moves to a fallback.
         _gemini_client = genai.Client(
             api_key=api_key,
             http_options=types.HttpOptions(
                 retry_options=types.HttpRetryOptions(
                     attempts=4, initial_delay=2, max_delay=15,
-                    http_status_codes=[429, 500, 502, 503, 504])))
+                    http_status_codes=[500, 502, 503, 504])))
     return _gemini_client
 
 
@@ -203,10 +221,26 @@ def _model_name():
     return os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 
 
+def _generate(model, contents, config):
+    # If the chosen model stays overloaded after the client's retries, try the
+    # fallbacks (GEMINI_FALLBACK_MODELS, comma-separated) before giving up.
+    fallbacks = [m.strip() for m in os.getenv(
+        "GEMINI_FALLBACK_MODELS", "gemini-3.8-flash,gemini-flash-latest,gemini-3.5-flash-lite").split(",")]
+    models = [model] + [m for m in fallbacks if m and m != model]
+    for attempt, name in enumerate(models):
+        try:
+            return _client().models.generate_content(model=name, contents=contents, config=config)
+        except (errors.ServerError, errors.ClientError) as error:
+            # Overloaded, out of quota, or retired for this key: try the next model.
+            recoverable = isinstance(error, errors.ServerError) or error.code in (404, 429)
+            if not recoverable or attempt == len(models) - 1:
+                raise
+
+
 def extract_brief(prompt):
     # One free-text pitch in; the same idea fields the rest of the pipeline uses out.
     _check_idea_length(prompt)
-    response = _client().models.generate_content(
+    response = _generate(
         model=_model_name(),
         contents=f"FOUNDER PITCH:\n{prompt}",
         config=types.GenerateContentConfig(
@@ -223,11 +257,7 @@ def extract_brief(prompt):
     brief = IdeaBrief.model_validate(response.parsed or json.loads(response.text))
 
     # Duplicate or blank phrases would duplicate rows in the evidence grid.
-    features = {}
-    for feature in brief.features:
-        if feature.strip():
-            features.setdefault(feature.strip().casefold(), feature.strip())
-    features = list(features.values())[:8]
+    features = _dedupe(brief.features)[:MAX_FEATURES]
     # Gemini's restatement must also fit the limit; otherwise keep the founder's words.
     description = brief.description.strip()
     if not description or len(description) > MAX_IDEA_CHARS:
@@ -239,6 +269,10 @@ def extract_brief(prompt):
         "Target_Audience": brief.target_audience.strip(),
         "features_inferred": brief.features_inferred,
         "audience_inferred": brief.audience_inferred,
+        # Options for the founder to add; never part of the analysis unless chosen.
+        "suggested_features": _dedupe(
+            [f for f in brief.suggested_features
+             if f.strip().casefold() not in {x.casefold() for x in features}])[:6],
     }
 
 
@@ -283,7 +317,7 @@ def analyze_competitors(user_input, ranked_apps, feature_matrix, review_data,
         ],
     }
 
-    response = _client().models.generate_content(
+    response = _generate(
         model=model_name or _model_name(),
         contents=f"{TASK}\n\nINPUT JSON:\n{json.dumps(payload, ensure_ascii=False)}",
         config=types.GenerateContentConfig(

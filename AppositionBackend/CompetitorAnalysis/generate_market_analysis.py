@@ -110,6 +110,23 @@ def build_document(data):
             paragraph.add_run(f"{i + 1}. {app['name']}: ").bold = True
             paragraph.add_run(explanation)
 
+    if data["feature_ranking"]:
+        doc.add_heading("Feature uniqueness", level=1)
+        doc.add_paragraph("Your features ranked from most to least unique, by how many of the "
+                          "ranked competitors' listings describe each one.")
+        ranking = doc.add_table(rows=1, cols=4)
+        ranking.style = "Table Grid"
+        _soft_borders(ranking)
+        for cell, name in zip(ranking.rows[0].cells, ("Rank", "Your feature", "Described", "Related")):
+            cell.text = name
+        for rank, item in enumerate(data["feature_ranking"], 1):
+            cells = ranking.add_row().cells
+            for cell, value in zip(cells, (str(rank), item["feature"],
+                                           f"{item['described']} of {item['apps']}",
+                                           f"{item['related']} of {item['apps']}")):
+                cell.text = value
+        _bold_header(ranking)
+
     if data["feature_comparison"]:
         doc.add_heading("Feature comparison", level=1)
         doc.add_paragraph("S = described in listing   R = related capability   "

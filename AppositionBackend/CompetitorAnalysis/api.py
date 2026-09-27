@@ -5,8 +5,10 @@ Run from this folder:  uvicorn api:app --port 8000
 
 import logging
 
+from typing import Annotated
+
 from fastapi import FastAPI, HTTPException, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 # main.py loads the SentenceTransformer model once.
 from main import (
@@ -17,7 +19,13 @@ from main import (
 )
 from feature_similarity_engine import build_feature_matrix, attach_feature_matches
 from filter_reviews import recent_negative_reviews
-from gemini_api import MAX_IDEA_CHARS, analyze_competitors, extract_brief
+from gemini_api import (
+    MAX_FEATURE_CHARS,
+    MAX_FEATURES,
+    MAX_IDEA_CHARS,
+    analyze_competitors,
+    extract_brief,
+)
 from generate_market_analysis import report_bytes
 from market_data import market_data_from_result
 
@@ -48,7 +56,9 @@ class ExtractRequest(BaseModel):
 class SimilarityRequest(BaseModel):
     appIdea: str = Field(min_length=1, max_length=MAX_IDEA_CHARS)
     appName: str = ""
-    keyFeatures: list[str] = Field(default_factory=list)
+    # The founder may edit the extracted features before analysis, so check them here too.
+    keyFeatures: list[Annotated[str, StringConstraints(max_length=MAX_FEATURE_CHARS)]] = Field(
+        default_factory=list, max_length=MAX_FEATURES)
     targetAudience: str = ""
     competitors: list[Candidate]
 
@@ -76,6 +86,7 @@ def extract(request: ExtractRequest):
             "Target_Audience": "",
             "features_inferred": False,
             "audience_inferred": False,
+            "suggested_features": [],
         }
         status = "unavailable"
 
@@ -86,6 +97,7 @@ def extract(request: ExtractRequest):
         "targetAudience": brief["Target_Audience"],
         "featuresInferred": brief["features_inferred"],
         "audienceInferred": brief["audience_inferred"],
+        "suggestedFeatures": brief["suggested_features"],
         "status": status,
     }
 

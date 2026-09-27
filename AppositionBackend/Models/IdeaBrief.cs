@@ -16,6 +16,9 @@ public class IdeaBrief
 
     public bool AudienceInferred { get; set; }
 
+    // Other features apps like this often have; offered to the founder, not analysed.
+    public List<string> SuggestedFeatures { get; set; } = [];
+
     // "available", or "unavailable" when Gemini failed and the raw pitch is used.
     public string Status { get; set; } = string.Empty;
 }
