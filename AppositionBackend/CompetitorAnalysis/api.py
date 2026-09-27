@@ -70,6 +70,12 @@ class ReportRequest(BaseModel):
     planned: list[int] = Field(default_factory=list)
 
 
+@app.get("/health")
+def health():
+    # Render pings this; the embedding model is already loaded by import time.
+    return {"status": "ok"}
+
+
 @app.post("/extract")
 def extract(request: ExtractRequest):
     # Gemini splits the one-message pitch into idea, features and audience.

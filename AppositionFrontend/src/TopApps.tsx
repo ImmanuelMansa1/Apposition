@@ -23,7 +23,7 @@ interface Publisher {
 }
 
 // Apple's public top-charts feed. It sends no CORS headers, so the browser goes through the
-// /apple-rss proxy in vite.config.ts (the backend should proxy it in production).
+// /apple-rss proxy: vite.config.ts locally, the vercel.json rewrite when deployed.
 const FEED = '/apple-rss/api/v2/us/apps/top-free/10/apps.json'
 
 // App-level revenue and user counts are only sold by paid trackers (Sensor Tower, Appfigures), so

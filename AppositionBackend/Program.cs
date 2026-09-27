@@ -7,13 +7,29 @@ builder.Services.AddControllers();
 
 builder.Services.AddHttpClient<ItunesService>();
 
+// Where the Python analysis API lives. Locally it's localhost:8000; on Render
+// the blueprint sets PythonApiUrl to the Python service's internal host:port.
+var pythonApiUrl = builder.Configuration["PythonApiUrl"] ?? "http://localhost:8000";
+if (!pythonApiUrl.Contains("://"))
+    pythonApiUrl = $"http://{pythonApiUrl}";
+
 builder.Services.AddHttpClient<PythonService>(client =>
 {
-    client.BaseAddress = new Uri("http://localhost:8000");
+    client.BaseAddress = new Uri(pythonApiUrl);
     // Embedding, five review feeds and two Gemini calls can outlast the 100 s default.
     client.Timeout = TimeSpan.FromMinutes(3);
 });
 
+
+// The deployed frontend (e.g. on Vercel) calls this API from another origin.
+// AllowedOrigins is a comma-separated list; the Vite dev server is always allowed.
+var allowedOrigins = (builder.Configuration["AllowedOrigins"] ?? "")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    .Append("http://localhost:5173")
+    .ToArray();
+
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
+    policy.WithOrigins(allowedOrigins).AllowAnyHeader().WithMethods("POST")));
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
@@ -31,6 +47,11 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseCors();
+
+// Render pings this to know the service is up.
+app.MapGet("/health", () => Results.Ok("ok"));
 
 app.MapControllers();
 
