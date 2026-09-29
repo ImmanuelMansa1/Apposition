@@ -1,5 +1,6 @@
 # Apposition
-
+## Contributers 
+-Immanuel Mansaray, Marvin Tientcheu, Vineet Sandanada, Sam Adejuwo
 **Know your competition before you build.**
 
 Describe your app idea in one sentence. Apposition finds the closest apps already on the
